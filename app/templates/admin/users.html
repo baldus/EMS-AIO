@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+
+{% block title %}Users | EMS Home{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>User Administration</h2>
+    <p>Manage local accounts and roles.</p>
+    <a href="{{ url_for('admin.user_create') }}">Create new user</a>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last Login</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+                <tr>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.role }}</td>
+                    <td>{{ 'Active' if user.is_active else 'Disabled' }}</td>
+                    <td>{{ user.last_login_at or '—' }}</td>
+                    <td class="actions">
+                        <a href="{{ url_for('admin.user_edit', user_id=user.id) }}">Edit</a>
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="5">No users found.</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

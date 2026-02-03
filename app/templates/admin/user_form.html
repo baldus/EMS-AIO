@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ 'Edit' if user else 'Create' }} User | EMS Home{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>{{ 'Edit' if user else 'Create' }} User</h2>
+    <form method="post">
+        {% if not user %}
+            <label for="username">Username</label>
+            <input id="username" name="username" required>
+        {% else %}
+            <p><strong>Username:</strong> {{ user.username }}</p>
+        {% endif %}
+
+        <label for="role">Role</label>
+        <select id="role" name="role">
+            {% for role in roles %}
+                <option value="{{ role }}" {% if user and user.role == role %}selected{% endif %}>{{ role }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="is_active">Active</label>
+        <input id="is_active" name="is_active" type="checkbox" {% if not user or user.is_active %}checked{% endif %}>
+
+        <label for="password">{{ 'Reset Password' if user else 'Password' }}</label>
+        <input id="password" name="password" type="password" {% if not user %}required{% endif %}>
+
+        <button type="submit">Save</button>
+    </form>
+    <p><a href="{{ url_for('admin.users_list') }}">Back to users</a></p>
+</div>
+{% endblock %}

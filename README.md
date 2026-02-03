@@ -1,305 +1,253 @@
 # EMS Home
 Local-First Operations Workspace
 
-EMS Home is the internal “home base” platform for Engineered & Manufacturing Solutions (EMS).
-
-It is a local-first, opinionated, Notion-lite style system designed to centralize work, context, and operational knowledge without relying on subscriptions, SaaS platforms, or external dependencies.
-
-This repository currently implements **Phase 0: Platform Foundation**.
+EMS Home is a local-first, Notion-lite workspace for Engineered & Manufacturing Solutions (EMS). It runs entirely on a dedicated PC with no SaaS dependencies or subscriptions. Phase 0 focuses on secure local authentication, foundational navigation, and audit logging.
 
 ---
 
 ## Phase 0 — Platform Foundation
 
 ### Purpose
+Build a stable, boring foundation that future phases can trust. This phase avoids unnecessary complexity and keeps all data on local hardware.
 
-Establish a boring, stable, and secure foundation that everything else builds on.
+### Definition of Done
+Phase 0 is complete when:
 
-Nothing fancy.
-Nothing fragile.
-No shortcuts.
-
-If Phase 0 is not solid, nothing built on top of it matters.
-
----
-
-## Phase 0 Goals
-
-- Application runs locally on a dedicated PC
-- Secure access using local authentication
-- Clear structure that will not fight future development
-- Opinionated defaults over premature flexibility
-- README serves as the single source of truth
-
----
-
-## Definition of Done (Phase 0)
-
-Phase 0 is considered complete when:
-
-- The application can be started locally
-- Users can log in and log out
-- Role-based access is enforced:
-  - Admin
-  - Editor
-  - Viewer
-- A Home page loads after login (even if empty)
-- All authenticated pages share a global layout:
-  - Header
-  - Sidebar navigation
-  - Main content area
-- A basic audit log records key system actions
-- This README clearly documents:
-  - Architecture
-  - Folder structure
-  - Permissions model
-  - How to run locally
-  - How to back up and restore data
-
----
-
-## Locked Design Decisions
-
-The following decisions are intentionally locked in Phase 0:
-
-- No subscriptions
-- No SaaS dependencies
-- No external authentication providers
-- Local-first data storage
-- Runs entirely on EMS-controlled hardware
-- Opinionated structure over flexibility
-
-Network access via VPN (WireGuard, Tailscale, OpenVPN) is recommended but handled outside the application.
+- The app runs locally on a dedicated PC.
+- Users can log in/out with local username/password.
+- Roles exist and are enforced: **Admin**, **Editor**, **Viewer**.
+- All authenticated pages share a global layout (header + sidebar + main).
+- A basic local audit log records key actions.
+- The canonical startup script (`./start_ems_home.sh`) validates the environment and launches the app.
+- This README documents architecture, permissions, run steps, and backup/restore.
 
 ---
 
 ## Architecture Overview
 
-EMS Home is a Flask application using the application factory pattern and modular blueprints.
+### App Factory + Blueprints
+EMS Home uses a Flask application factory to keep configuration, extensions, and blueprints cleanly isolated.
 
-### Request Flow
+- **Factory**: `create_app()` in `app/__init__.py`
+- **Blueprints**:
+  - `auth`: login/logout
+  - `main`: home page
+  - `admin`: user management
+- **Extensions**: SQLAlchemy + Flask-Login in `app/extensions.py`
+- **Models**: `User`, `AuditLog` in `app/models.py`
 
-Request  
-→ Flask App Factory  
-→ Blueprint Route  
-→ Authentication & Role Check  
-→ Business Logic  
-→ Database  
-→ Audit Log  
-→ Template Render (global layout)
-
-### Core Concepts
-
-- Blueprints isolate features and permissions
-- Flask-Login manages sessions
-- SQLite stores all data locally
-- Audit logging is mandatory for system actions
-- Role-based access control is enforced at the route level
+### Data + Session Flow (Phase 0)
+1. Flask app factory initializes configuration and extensions.
+2. Blueprints register routes.
+3. Flask-Login enforces login and session handling.
+4. SQLAlchemy stores users and audit logs in local SQLite.
+5. Templates render within the authenticated layout shell.
 
 ---
 
 ## Folder Structure
 
-ems_home/
+```
+EMS-AIO/
 ├── app/
-│ ├── init.py # Application factory
-│ ├── config.py # Configuration classes
-│ ├── extensions.py # db, login manager, etc.
-│ │
-│ ├── models/
-│ │ ├── user.py # User + role model
-│ │ └── audit.py # Audit log model
-│ │
-│ ├── blueprints/
-│ │ ├── auth/ # Login / logout
-│ │ ├── main/ # Home page
-│ │ └── admin/ # User & role management
-│ │
-│ ├── templates/
-│ │ ├── layout.html # Global layout
-│ │ └── partials/ # Header, sidebar, flashes
-│ │
-│ └── static/
-│ └── css/
-│ └── app.css
-│
-├── instance/ # Local data (SQLite DB)
-│ └── ems_home.db
-│
-├── migrations/ # Optional (if used)
-├── tests/
-├── run.py # Development entrypoint
-├── wsgi.py # Production entrypoint
-├── requirements.txt
-├── .env.example
+│   ├── __init__.py        # App factory, CLI commands, setup
+│   ├── config.py          # Development/Production config
+│   ├── extensions.py      # SQLAlchemy + LoginManager
+│   ├── decorators.py      # RBAC helpers
+│   ├── models.py          # User + AuditLog models
+│   ├── auth/
+│   │   ├── __init__.py
+│   │   └── routes.py       # /login, /logout
+│   ├── main/
+│   │   ├── __init__.py
+│   │   └── routes.py       # / (home)
+│   ├── admin/
+│   │   ├── __init__.py
+│   │   └── routes.py       # /admin/users
+│   └── templates/
+│       ├── layout.html     # Global header + sidebar
+│       ├── login.html
+│       ├── home.html
+│       ├── admin/
+│       │   ├── users.html
+│       │   └── user_form.html
+│       └── errors/403.html
+├── instance/               # Local SQLite DB (gitignored)
+├── .env.example            # Environment variables template
 ├── .gitignore
+├── requirements.txt
+├── run.py                  # Local dev entrypoint
+├── start_ems_home.sh        # Canonical startup script
+├── wsgi.py                 # Production entrypoint
 └── README.md
-
+```
 
 ---
 
-## Permissions Model
-
-EMS Home uses role-based access control.
+## Permissions Model (RBAC)
 
 ### Roles
+- **Viewer**: Can view pages.
+- **Editor**: Future ability to edit content.
+- **Admin**: Full access, including user management.
 
-- Viewer  
-  - Can view pages
-
-- Editor  
-  - Can view and modify content (future phases)
-
-- Admin  
-  - Full access
-  - User and role management
-
-### Enforcement Rules
-
-- All pages require authentication unless explicitly public
-- Admin routes require Admin role
-- Role checks are enforced via decorators at the route level
-- UI elements are hidden when permissions do not allow access
+### Enforcement
+- All routes (except `/login` and static assets) are protected by `@login_required`.
+- Admin routes under `/admin/*` require `@roles_required("Admin")`.
+- Admin-only UI links are hidden for non-admins.
 
 ---
 
 ## Audit Logging
 
-Phase 0 includes a basic, append-only audit log.
+Phase 0 stores an append-only audit log locally:
 
-### Logged Events (Minimum)
+- Login and logout events.
+- User created/updated/disabled actions.
+- Role changes and password resets.
 
-- User login
-- User logout
-- User created
-- User updated
-- User disabled or enabled
-- Role changes
-
-Audit logs are stored locally and are not user-editable.
+Audit logs are stored in the local SQLite DB and are not editable by users.
 
 ---
 
 ## Running Locally
 
-### Clone the Repository
+### 1) Clone and set up a virtual environment
 
-git clone https://github.com/<your-org>/ems-home.git
-cd ems-home
-
-
-### Create Virtual Environment
-
+```bash
+git clone <your-repo-url>
+cd EMS-AIO
 python3 -m venv .venv
 source .venv/bin/activate
+```
 
+### 2) Configure environment variables
 
-### Install Dependencies
-
-pip install -r requirements.txt
-
-
-### Configure Environment
-
+```bash
 cp .env.example .env
+```
 
+Edit `.env` and set at minimum:
 
-Set at minimum:
-- FLASK_ENV
-- SECRET_KEY
+- `SECRET_KEY` (required; do not commit)
+- `FLASK_CONFIG` (`development` or `production`)
 
-### Initialize Database
+### 3) Initialize the database
 
-On first run, the SQLite database is created automatically in:
+The SQLite database is created automatically on first run at:
 
+```
 instance/ems_home.db
+```
 
+### 4) Start the application (canonical)
 
-### Run the Application
+The **only supported** way to run EMS Home locally is the startup script:
 
-Development:
+```bash
+./start_ems_home.sh
+```
 
-python run.py
+The script will:
 
-
-Production-style:
-
-gunicorn wsgi:app
-
-
----
-
-## Data Storage
-
-- All data is stored locally
-- SQLite database lives in `/instance`
-- `/instance` is gitignored
-- No external services required
+- Validate OS, Python version, and allowed OS user.
+- Ensure `.env` exists and validate required settings.
+- Create/activate `.venv` and install dependencies.
+- Bootstrap the first Admin user if none exist.
+- Launch the app in dev or prod mode based on `EMS_RUN_MODE`.
 
 ---
 
-## Backup and Restore
+## Starting EMS Home
 
-### Backup
+### Required environment variables (`.env`)
+- `SECRET_KEY`: required, must not be a placeholder value.
+- `FLASK_ENV`: required (if missing, the script defaults to `production` and warns).
+- `FLASK_CONFIG`: `development` or `production`.
+- `ALLOWED_START_USERS`: comma-separated list (default: `ems,josh`).
+- `DATABASE_URL` (optional): override the default SQLite location.
 
-1. Stop the application
+### First-run Admin Bootstrap
+On the first successful run, the startup script will prompt for an Admin username/password if **no active Admin exists**. It creates that Admin user once and records an audit log entry with action `bootstrap_admin_created`. Subsequent runs will skip bootstrap with `Admin present; bootstrap skipped.`
+
+### Run modes
+Set `EMS_RUN_MODE` in `.env` to control how the app starts:
+
+- `prod` (default when `gunicorn` is installed): `gunicorn -w ${GUNICORN_WORKERS:-2} -b ${BIND_ADDR:-0.0.0.0}:${PORT:-8000} wsgi:app`
+- `dev`: `python run.py`
+
+---
+
+## Troubleshooting
+
+### Wrong OS user
+The script enforces `ALLOWED_START_USERS` from `.env`. If you see a message like `User <name> is not allowed`, update `ALLOWED_START_USERS` or run as an allowed user.
+
+### Missing `.env`
+Copy the example file and set required values:
+
+```bash
+cp .env.example .env
+```
+
+### Bad `SECRET_KEY`
+If you see `SECRET_KEY is set to a placeholder`, set a unique, strong value in `.env`.
+
+### Virtualenv / pip issues
+If dependency installation fails, ensure you have network access to PyPI and that Python 3.11+ is installed. Then re-run `./start_ems_home.sh`.
+
+### Database permission errors
+If `instance/` is not writable, fix permissions and rerun the script. The SQLite DB lives at `instance/ems_home.db` by default.
+
+---
+
+## Backup & Restore
+
+### Where data lives
+- SQLite database: `instance/ems_home.db`
+
+### Backup procedure
+1. Stop the app.
 2. Copy the database file:
 
-cp instance/ems_home.db /path/to/backup/ems_home_YYYY-MM-DD.db
+```bash
+cp instance/ems_home.db /path/to/backup/ems_home_$(date +%F).db
+```
 
+3. Restart the app.
 
-3. Restart the application
-
-### Restore
-
-1. Stop the application
+### Restore procedure
+1. Stop the app.
 2. Replace the database file:
 
-cp ems_home_backup.db instance/ems_home.db
+```bash
+cp /path/to/backup/ems_home_YYYY-MM-DD.db instance/ems_home.db
+```
 
-
-3. Restart the application
+3. Restart the app.
 
 ---
 
 ## Security Notes
 
-- Passwords are hashed (never stored in plain text)
-- Sessions managed by Flask-Login
-- SECRET_KEY must never be committed
-- Intended for trusted local networks or VPN access
-- This is an internal operations platform, not a public-facing app
+- Passwords are hashed using Werkzeug (`generate_password_hash` / `check_password_hash`).
+- Sessions are managed by Flask-Login.
+- `SECRET_KEY` must be unique and never committed.
+- Run behind VPN (WireGuard/Tailscale/OpenVPN) when remote access is required.
+- The app is intended for trusted internal networks only.
 
 ---
 
-## Out of Scope for Phase 0
+## Out of Scope (Phase 0)
 
-The following are intentionally excluded:
+The following are intentionally excluded until later phases:
 
-- Notes or documents
-- Projects or tasks
-- Metrics or dashboards
+- Notes, documents, or attachments
+- Projects, tasks, or metrics dashboards
 - Search or tagging
-- File uploads
-- Integrations
+- External integrations
 - Automation
 
-These will be introduced in later phases.
-
 ---
 
-## Roadmap (High Level)
-
-- Phase 0 — Platform Foundation
-- Phase 1 — Core Content
-- Phase 2 — Metrics and Operational Views
-- Phase 3 — Automation and Integrations
-- Phase 4 — Advanced Analytics
-
-Each phase builds on the previous one without rewriting the foundation.
-
----
-
-Stability first.
-Clarity over cleverness.
-Foundations before features.
+Stability first. Clarity over cleverness. Foundations before features.
