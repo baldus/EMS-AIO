@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login | EMS Home</title>
+    <style>
+        body { font-family: "Segoe UI", Arial, sans-serif; background: #f5f6f8; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .card { background: #fff; padding: 2rem; border-radius: 10px; width: 100%; max-width: 360px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        label { display: block; font-weight: 600; margin-top: 1rem; }
+        input { width: 100%; padding: 0.5rem; margin-top: 0.25rem; }
+        button { width: 100%; margin-top: 1.5rem; padding: 0.6rem 1.1rem; background: #1f2a44; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+        .flash { margin-top: 1rem; padding: 0.6rem; border-radius: 6px; background: #fee2e2; color: #991b1b; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>EMS Home</h1>
+        <p>Sign in with your local account.</p>
+        <form method="post">
+            <label for="username">Username</label>
+            <input id="username" name="username" autocomplete="username" required>
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+            <button type="submit">Login</button>
+        </form>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for _category, message in messages %}
+                    <div class="flash">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+</body>
+</html>
