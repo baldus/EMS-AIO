@@ -164,6 +164,25 @@ python run.py
 gunicorn wsgi:app
 ```
 
+### Typical startup procedure (daily use)
+
+```bash
+cd EMS-AIO
+source .venv/bin/activate
+export FLASK_CONFIG=development
+export SECRET_KEY=change-me
+python run.py
+```
+
+If you manage environment variables in a `.env` file, load them before starting the app:
+
+```bash
+set -a
+source .env
+set +a
+python run.py
+```
+
 ---
 
 ## Backup & Restore
