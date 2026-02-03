@@ -18,6 +18,7 @@ Phase 0 is complete when:
 - Roles exist and are enforced: **Admin**, **Editor**, **Viewer**.
 - All authenticated pages share a global layout (header + sidebar + main).
 - A basic local audit log records key actions.
+- The canonical startup script (`./start_ems_home.sh`) validates the environment and launches the app.
 - This README documents architecture, permissions, run steps, and backup/restore.
 
 ---
@@ -76,6 +77,7 @@ EMS-AIO/
 ├── .gitignore
 ├── requirements.txt
 ├── run.py                  # Local dev entrypoint
+├── start_ems_home.sh        # Canonical startup script
 ├── wsgi.py                 # Production entrypoint
 └── README.md
 ```
@@ -119,13 +121,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 2) Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3) Configure environment variables
+### 2) Configure environment variables
 
 ```bash
 cp .env.example .env
@@ -136,7 +132,7 @@ Edit `.env` and set at minimum:
 - `SECRET_KEY` (required; do not commit)
 - `FLASK_CONFIG` (`development` or `production`)
 
-### 4) Initialize the database
+### 3) Initialize the database
 
 The SQLite database is created automatically on first run at:
 
@@ -144,44 +140,64 @@ The SQLite database is created automatically on first run at:
 instance/ems_home.db
 ```
 
-### 5) Create your first Admin user
+### 4) Start the application (canonical)
+
+The **only supported** way to run EMS Home locally is the startup script:
 
 ```bash
-flask --app run.py create-admin <username>
+./start_ems_home.sh
 ```
 
-You will be prompted for a password.
+The script will:
 
-### 6) Run the application
+- Validate OS, Python version, and allowed OS user.
+- Ensure `.env` exists and validate required settings.
+- Create/activate `.venv` and install dependencies.
+- Bootstrap the first Admin user if none exist.
+- Launch the app in dev or prod mode based on `EMS_RUN_MODE`.
 
-**Development**
+---
+
+## Starting EMS Home
+
+### Required environment variables (`.env`)
+- `SECRET_KEY`: required, must not be a placeholder value.
+- `FLASK_ENV`: required (if missing, the script defaults to `production` and warns).
+- `FLASK_CONFIG`: `development` or `production`.
+- `ALLOWED_START_USERS`: comma-separated list (default: `ems,josh`).
+- `DATABASE_URL` (optional): override the default SQLite location.
+
+### First-run Admin Bootstrap
+On the first successful run, the startup script will prompt for an Admin username/password if **no active Admin exists**. It creates that Admin user once and records an audit log entry with action `bootstrap_admin_created`. Subsequent runs will skip bootstrap with `Admin present; bootstrap skipped.`
+
+### Run modes
+Set `EMS_RUN_MODE` in `.env` to control how the app starts:
+
+- `prod` (default when `gunicorn` is installed): `gunicorn -w ${GUNICORN_WORKERS:-2} -b ${BIND_ADDR:-0.0.0.0}:${PORT:-8000} wsgi:app`
+- `dev`: `python run.py`
+
+---
+
+## Troubleshooting
+
+### Wrong OS user
+The script enforces `ALLOWED_START_USERS` from `.env`. If you see a message like `User <name> is not allowed`, update `ALLOWED_START_USERS` or run as an allowed user.
+
+### Missing `.env`
+Copy the example file and set required values:
+
 ```bash
-python run.py
+cp .env.example .env
 ```
 
-**Production-style (example)**
-```bash
-gunicorn wsgi:app
-```
+### Bad `SECRET_KEY`
+If you see `SECRET_KEY is set to a placeholder`, set a unique, strong value in `.env`.
 
-### Typical startup procedure (daily use)
+### Virtualenv / pip issues
+If dependency installation fails, ensure you have network access to PyPI and that Python 3.11+ is installed. Then re-run `./start_ems_home.sh`.
 
-```bash
-cd EMS-AIO
-source .venv/bin/activate
-export FLASK_CONFIG=development
-export SECRET_KEY=change-me
-python run.py
-```
-
-If you manage environment variables in a `.env` file, load them before starting the app:
-
-```bash
-set -a
-source .env
-set +a
-python run.py
-```
+### Database permission errors
+If `instance/` is not writable, fix permissions and rerun the script. The SQLite DB lives at `instance/ems_home.db` by default.
 
 ---
 
