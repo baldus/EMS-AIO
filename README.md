@@ -23,6 +23,69 @@ Phase 0 is complete when:
 
 ---
 
+## Phase 1 — Pages, Notes & Thinking Space
+
+### Purpose
+Deliver a local-first pages and blocks workspace with safe, explicit editing. This phase adds Pages, Quick Capture, and a Recent Activity panel backed by the existing audit log.
+
+### What Phase 1 Is
+- Pages with ordered blocks (text, heading, bulleted list, checkbox list, divider, callout).
+- Explicit Save/Cancel editing flow (no autosave).
+- Quick Capture on the Pages landing screen.
+- Recent Activity panel based on audit logs.
+- Archived pages list with restore.
+
+### What Phase 1 Is Not
+- No tags, nesting, backlinks, AI, or auto-formatting.
+- No drag-and-drop, no autosave, no realtime collaboration.
+
+### Data Model Summary
+- **Page**: title, created/updated timestamps, created_by, last_viewed_at, last_edited_at, archived_at, archived_by.
+- **Block**: page_id, type, position, content_json, created/updated timestamps, created_by, updated_by.
+- Unique constraint on `(page_id, position)` for ordered blocks.
+
+### Routes
+- `GET /pages` — Pages landing (recent pages, quick capture, activity).
+- `POST /pages/quick_capture` — Create page + first text block.
+- `GET /pages/new` — Create page form.
+- `POST /pages` — Create page (title optional).
+- `GET /pages/<id>` — View page (updates last_viewed_at).
+- `GET /pages/<id>/edit` — Edit page.
+- `POST /pages/<id>/save` — Save page title + blocks.
+- `POST /pages/<id>/archive` — Archive page.
+- `POST /pages/<id>/restore` — Restore page.
+- `GET /pages/archived` — Archived pages list.
+
+### Permission Matrix
+| Action | Viewer | Editor | Admin |
+| --- | --- | --- | --- |
+| View pages | ✅ | ✅ | ✅ |
+| Create pages | ❌ | ✅ | ✅ |
+| Edit pages/blocks | ❌ | ✅ | ✅ |
+| Archive/restore | ❌ | ✅ | ✅ |
+| View archived list | ❌ | ✅ | ✅ |
+
+### Editing Model
+- Editing is always explicit: Save commits changes, Cancel discards.
+- Reordering uses Up/Down controls.
+- Delete requires confirmation.
+- No autosave.
+
+### Manual Verification Checklist
+- Create a page with a blank title -> defaults to “Untitled”.
+- Add blocks of each type, reorder, delete, and save.
+- Quick Capture creates a page and first text block.
+- Archive hides a page from the recent list and shows it in archived.
+- Restore returns the page to the recent list.
+- Viewer cannot create, edit, archive, or restore.
+
+### Known Limitations
+- No tags or nesting.
+- No autosave.
+- No backlinks or AI features.
+
+---
+
 ## Architecture Overview
 
 ### App Factory + Blueprints

@@ -1,0 +1,80 @@
+{% extends "layout.html" %}
+{% block title %}Pages | EMS Home{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>Pages</h2>
+    <p>Local pages and blocks. Changes are saved only when you click Save.</p>
+    <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+        <div style="flex: 2; min-width: 320px;">
+            {% if current_user.role in ['Admin', 'Editor'] %}
+            <h3>Quick Capture</h3>
+            <form action="{{ url_for('pages.quick_capture') }}" method="post">
+                <label for="capture_text">Capture text</label>
+                <textarea id="capture_text" name="capture_text" rows="4" style="width: 100%; max-width: 600px;"></textarea>
+                <button type="submit">Save</button>
+            </form>
+            <div style="margin-top: 1rem;">
+                <a href="{{ url_for('pages.page_new') }}">Create new page</a>
+            </div>
+            {% endif %}
+
+            <h3 style="margin-top: 1.5rem;">Recent Pages</h3>
+            {% if pages %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Last Edited</th>
+                        <th>Last Viewed</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for page in pages %}
+                    <tr>
+                        <td>{{ page.title }}</td>
+                        <td>{{ page.last_edited_at or "-" }}</td>
+                        <td>{{ page.last_viewed_at or "-" }}</td>
+                        <td>{{ page.created_at }}</td>
+                        <td class="actions">
+                            <a href="{{ url_for('pages.page_view', page_id=page.id) }}">View</a>
+                            {% if current_user.role in ['Admin', 'Editor'] %}
+                                <a href="{{ url_for('pages.page_edit', page_id=page.id) }}">Edit</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>No pages yet.</p>
+            {% endif %}
+
+            {% if current_user.role in ['Admin', 'Editor'] %}
+            <p style="margin-top: 1rem;">
+                <a href="{{ url_for('pages.archived_pages') }}">View archived pages</a>
+            </p>
+            {% endif %}
+        </div>
+
+        <div style="flex: 1; min-width: 260px;">
+            <h3>Recent Activity</h3>
+            {% if recent_activity %}
+            <ul>
+                {% for event in recent_activity %}
+                <li>
+                    <strong>{{ event.action }}</strong>
+                    <div style="font-size: 0.85rem; color: #4b5563;">
+                        {{ event.entity_type }} {{ event.entity_id }} · {{ event.created_at }}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p>No recent activity.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

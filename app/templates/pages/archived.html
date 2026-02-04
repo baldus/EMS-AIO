@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+{% block title %}Archived Pages | EMS Home{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>Archived Pages</h2>
+    {% if pages %}
+    <table>
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Archived At</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for page in pages %}
+            <tr>
+                <td>{{ page.title }}</td>
+                <td>{{ page.archived_at }}</td>
+                <td>
+                    <form action="{{ url_for('pages.page_restore', page_id=page.id) }}" method="post" class="inline">
+                        <button type="submit">Restore</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No archived pages.</p>
+    {% endif %}
+    <p style="margin-top: 1rem;">
+        <a href="{{ url_for('pages.pages_index') }}">Back to pages</a>
+    </p>
+</div>
+{% endblock %}

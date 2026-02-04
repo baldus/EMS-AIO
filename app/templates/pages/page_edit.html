@@ -1,0 +1,190 @@
+{% extends "layout.html" %}
+{% block title %}Edit {{ page.title }} | EMS Home{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>Edit Page</h2>
+    <form id="page-edit-form" action="{{ url_for('pages.page_save', page_id=page.id) }}" method="post">
+        <label for="title">Title</label>
+        <input id="title" name="title" type="text" value="{{ page.title }}">
+
+        <input type="hidden" id="blocks_payload" name="blocks_payload" value="">
+
+        <div id="blocks-container" style="margin-top: 1.5rem;">
+            {% for block in page.blocks %}
+            <div class="block-row" data-block-id="{{ block.id }}" data-block-type="{{ block.type }}" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong>{{ block.type.replace('_', ' ').title() }}</strong>
+                    <div>
+                        <button type="button" class="move-up">Up</button>
+                        <button type="button" class="move-down">Down</button>
+                        <button type="button" class="delete-block">Delete</button>
+                    </div>
+                </div>
+                <div style="margin-top: 0.5rem;">
+                    {% if block.type in ['text', 'heading'] %}
+                        <textarea class="block-text" rows="3" style="width: 100%;">{{ block.content_json.text }}</textarea>
+                    {% elif block.type == 'bulleted_list' %}
+                        <textarea class="block-items" rows="4" style="width: 100%;" placeholder="One item per line">{{ block.content_json.items | join('\n') }}</textarea>
+                    {% elif block.type == 'checkbox_list' %}
+                        <textarea class="block-checkbox-items" rows="4" style="width: 100%;" placeholder="[x] Done item&#10;[ ] Pending item">{% for item in block.content_json.items %}{% if item.checked %}[x] {% else %}[ ] {% endif %}{{ item.text }}{% if not loop.last %}&#10;{% endif %}{% endfor %}</textarea>
+                    {% elif block.type == 'divider' %}
+                        <em>No content for dividers.</em>
+                    {% elif block.type == 'callout' %}
+                        <label>Style</label>
+                        <select class="block-callout-style">
+                            <option value="note" {% if block.content_json.style == 'note' %}selected{% endif %}>Note</option>
+                            <option value="info" {% if block.content_json.style == 'info' %}selected{% endif %}>Info</option>
+                            <option value="warn" {% if block.content_json.style == 'warn' %}selected{% endif %}>Warn</option>
+                        </select>
+                        <textarea class="block-callout-text" rows="3" style="width: 100%; margin-top: 0.5rem;">{{ block.content_json.text }}</textarea>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div style="margin-top: 1rem;">
+            <strong>Add block:</strong>
+            <button type="button" class="add-block" data-type="text">+ Text</button>
+            <button type="button" class="add-block" data-type="heading">+ Heading</button>
+            <button type="button" class="add-block" data-type="bulleted_list">+ Bullets</button>
+            <button type="button" class="add-block" data-type="checkbox_list">+ Checkboxes</button>
+            <button type="button" class="add-block" data-type="divider">+ Divider</button>
+            <button type="button" class="add-block" data-type="callout">+ Callout</button>
+        </div>
+
+        <div style="margin-top: 1.5rem;">
+            <button type="submit">Save</button>
+            <a href="{{ url_for('pages.page_view', page_id=page.id) }}" style="margin-left: 0.75rem;">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+    const blocksContainer = document.getElementById('blocks-container');
+
+    function createBlockRow(type) {
+        const row = document.createElement('div');
+        row.className = 'block-row';
+        row.dataset.blockId = '';
+        row.dataset.blockType = type;
+        row.style.border = '1px solid #e5e7eb';
+        row.style.borderRadius = '8px';
+        row.style.padding = '0.75rem';
+        row.style.marginBottom = '0.75rem';
+
+        let contentHtml = '';
+        if (type === 'text' || type === 'heading') {
+            contentHtml = '<textarea class="block-text" rows="3" style="width: 100%;"></textarea>';
+        } else if (type === 'bulleted_list') {
+            contentHtml = '<textarea class="block-items" rows="4" style="width: 100%;" placeholder="One item per line"></textarea>';
+        } else if (type === 'checkbox_list') {
+            contentHtml = '<textarea class="block-checkbox-items" rows="4" style="width: 100%;" placeholder="[x] Done item\\n[ ] Pending item"></textarea>';
+        } else if (type === 'divider') {
+            contentHtml = '<em>No content for dividers.</em>';
+        } else if (type === 'callout') {
+            contentHtml = `
+                <label>Style</label>
+                <select class="block-callout-style">
+                    <option value="note">Note</option>
+                    <option value="info">Info</option>
+                    <option value="warn">Warn</option>
+                </select>
+                <textarea class="block-callout-text" rows="3" style="width: 100%; margin-top: 0.5rem;"></textarea>
+            `;
+        }
+
+        row.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <strong>${type.replace('_', ' ').replace(/\\b\\w/g, c => c.toUpperCase())}</strong>
+                <div>
+                    <button type="button" class="move-up">Up</button>
+                    <button type="button" class="move-down">Down</button>
+                    <button type="button" class="delete-block">Delete</button>
+                </div>
+            </div>
+            <div style="margin-top: 0.5rem;">${contentHtml}</div>
+        `;
+        return row;
+    }
+
+    function parseCheckboxLines(text) {
+        return text.split('\\n').map(line => line.trim()).filter(line => line.length > 0).map(line => {
+            let checked = false;
+            let cleaned = line;
+            if (line.startsWith('[x]')) {
+                checked = true;
+                cleaned = line.slice(3).trim();
+            } else if (line.startsWith('[ ]')) {
+                cleaned = line.slice(3).trim();
+            }
+            return { text: cleaned, checked: checked };
+        });
+    }
+
+    function serializeBlocks() {
+        const rows = blocksContainer.querySelectorAll('.block-row');
+        const blocks = [];
+        rows.forEach((row) => {
+            const type = row.dataset.blockType;
+            let content = {};
+            if (type === 'text' || type === 'heading') {
+                content = { text: row.querySelector('.block-text').value || '' };
+            } else if (type === 'bulleted_list') {
+                const items = row.querySelector('.block-items').value.split('\\n').map(item => item.trim()).filter(item => item.length > 0);
+                content = { items: items };
+            } else if (type === 'checkbox_list') {
+                const raw = row.querySelector('.block-checkbox-items').value || '';
+                content = { items: parseCheckboxLines(raw) };
+            } else if (type === 'divider') {
+                content = {};
+            } else if (type === 'callout') {
+                content = {
+                    style: row.querySelector('.block-callout-style').value,
+                    text: row.querySelector('.block-callout-text').value || ''
+                };
+            }
+            blocks.push({
+                id: row.dataset.blockId ? parseInt(row.dataset.blockId) : null,
+                type: type,
+                content: content
+            });
+        });
+        document.getElementById('blocks_payload').value = JSON.stringify(blocks);
+    }
+
+    blocksContainer.addEventListener('click', (event) => {
+        const target = event.target;
+        if (target.classList.contains('move-up')) {
+            const row = target.closest('.block-row');
+            if (row && row.previousElementSibling) {
+                blocksContainer.insertBefore(row, row.previousElementSibling);
+            }
+        }
+        if (target.classList.contains('move-down')) {
+            const row = target.closest('.block-row');
+            if (row && row.nextElementSibling) {
+                blocksContainer.insertBefore(row.nextElementSibling, row);
+            }
+        }
+        if (target.classList.contains('delete-block')) {
+            const row = target.closest('.block-row');
+            if (row && confirm('Delete this block?')) {
+                row.remove();
+            }
+        }
+    });
+
+    document.querySelectorAll('.add-block').forEach(button => {
+        button.addEventListener('click', () => {
+            const type = button.dataset.type;
+            const row = createBlockRow(type);
+            blocksContainer.appendChild(row);
+        });
+    });
+
+    document.getElementById('page-edit-form').addEventListener('submit', (event) => {
+        serializeBlocks();
+    });
+</script>
+{% endblock %}

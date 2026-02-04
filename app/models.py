@@ -6,6 +6,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app.extensions import db
 
 ROLE_CHOICES = ("Admin", "Editor", "Viewer")
+PAGE_BLOCK_TYPES = ("text", "heading", "bulleted_list", "checkbox_list", "divider", "callout")
 
 
 class User(UserMixin, db.Model):
@@ -36,3 +37,41 @@ class AuditLog(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     actor = db.relationship("User", backref="audit_logs", foreign_keys=[actor_user_id])
+
+
+class Page(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False, default="Untitled")
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    last_viewed_at = db.Column(db.DateTime)
+    last_edited_at = db.Column(db.DateTime)
+    archived_at = db.Column(db.DateTime)
+    archived_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id])
+    archived_by = db.relationship("User", foreign_keys=[archived_by_user_id])
+    blocks = db.relationship(
+        "Block",
+        backref="page",
+        order_by="Block.position.asc()",
+        cascade="all, delete-orphan",
+    )
+
+
+class Block(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    page_id = db.Column(db.Integer, db.ForeignKey("page.id"), nullable=False)
+    type = db.Column(db.String(50), nullable=False)
+    position = db.Column(db.Integer, nullable=False)
+    content_json = db.Column(db.JSON, nullable=False, default=dict)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    updated_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id])
+    updated_by = db.relationship("User", foreign_keys=[updated_by_user_id])
+
+    __table_args__ = (db.UniqueConstraint("page_id", "position", name="uq_block_page_position"),)

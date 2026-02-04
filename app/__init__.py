@@ -9,6 +9,7 @@ from app.admin import admin_bp
 from app.auth import auth_bp
 from app.extensions import db, login_manager
 from app.main import main_bp
+from app.pages import pages_bp
 from app.models import ROLE_CHOICES, User
 
 
@@ -39,6 +40,7 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(pages_bp)
 
     @app.errorhandler(403)
     def forbidden(_error):
