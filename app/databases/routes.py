@@ -20,6 +20,12 @@ from app.models import (
     TaskPageLink,
 )
 
+LIST_ENDPOINTS = {
+    "tasks": "databases.tasks_list",
+    "projects": "databases.projects_list",
+    "companies": "databases.companies_list",
+}
+
 
 def _is_editor_owned(entity):
     return current_user.role == "Admin" or entity.created_by_user_id == current_user.id
@@ -46,11 +52,14 @@ def _log_action(action, entity_type, entity_id, metadata=None):
 
 
 def _parse_query_state():
+    direction = request.args.get("dir", request.args.get("direction", "desc")).strip().lower()
+    if direction not in {"asc", "desc"}:
+        direction = "desc"
     return {
         "q": request.args.get("q", "").strip(),
         "status": request.args.get("status", "").strip(),
         "sort": request.args.get("sort", "updated_at").strip(),
-        "direction": request.args.get("direction", "desc").strip(),
+        "dir": direction,
         "include_archived": request.args.get("include_archived", "0").strip(),
         "project_id": request.args.get("project_id", "").strip(),
         "company_id": request.args.get("company_id", "").strip(),
@@ -77,7 +86,15 @@ def _save_view(database_key):
         abort(404)
 
     is_default = request.form.get("is_default") == "on"
-    query_json = _parse_query_state()
+    query_json = {
+        "q": request.form.get("q", "").strip(),
+        "status": request.form.get("status", "").strip(),
+        "sort": request.form.get("sort", "updated_at").strip(),
+        "dir": request.form.get("dir", "desc").strip(),
+        "include_archived": request.form.get("include_archived", "0").strip(),
+        "project_id": request.form.get("project_id", "").strip(),
+        "company_id": request.form.get("company_id", "").strip(),
+    }
 
     if is_default:
         SavedView.query.filter_by(
@@ -109,6 +126,18 @@ def _save_view(database_key):
 
 
 def _prepare_list_context(database_key):
+    if database_key not in LIST_ENDPOINTS:
+        abort(404)
+
+    if request.args.get("use_default") == "1":
+        default_view = SavedView.query.filter_by(
+            user_id=current_user.id,
+            database_key=database_key,
+            is_default=True,
+        ).first()
+        if default_view:
+            return _apply_view_args(default_view)
+
     view_id = request.args.get("view_id", type=int)
     saved_views = SavedView.query.filter_by(
         user_id=current_user.id,
@@ -129,13 +158,55 @@ def _prepare_list_context(database_key):
     }
 
 
-@databases_bp.route("/tasks", methods=["GET", "POST"])
+def _set_default_view(view):
+    SavedView.query.filter_by(
+        user_id=current_user.id,
+        database_key=view.database_key,
+        is_default=True,
+    ).update({"is_default": False})
+    view.is_default = True
+    db.session.commit()
+
+
+@databases_bp.route("/<string:db_key>/views/save", methods=["POST"])
+@login_required
+def save_view(db_key):
+    if db_key not in LIST_ENDPOINTS:
+        abort(404)
+    _save_view(db_key)
+    return redirect(url_for(LIST_ENDPOINTS[db_key], **request.args))
+
+
+@databases_bp.route("/<string:db_key>/views/<int:view_id>/delete", methods=["POST"])
+@login_required
+def delete_view(db_key, view_id):
+    if db_key not in LIST_ENDPOINTS or current_user.role == "Viewer":
+        abort(403)
+    view = SavedView.query.get_or_404(view_id)
+    if view.user_id != current_user.id or view.database_key != db_key:
+        abort(403)
+    db.session.delete(view)
+    db.session.commit()
+    flash("Saved view deleted.", "success")
+    return redirect(url_for(LIST_ENDPOINTS[db_key], **request.args))
+
+
+@databases_bp.route("/<string:db_key>/views/<int:view_id>/default", methods=["POST"])
+@login_required
+def set_default_view(db_key, view_id):
+    if db_key not in LIST_ENDPOINTS or current_user.role == "Viewer":
+        abort(403)
+    view = SavedView.query.get_or_404(view_id)
+    if view.user_id != current_user.id or view.database_key != db_key:
+        abort(403)
+    _set_default_view(view)
+    flash("Default view set.", "success")
+    return redirect(url_for(LIST_ENDPOINTS[db_key], **request.args))
+
+
+@databases_bp.route("/tasks", methods=["GET"])
 @login_required
 def tasks_list():
-    if request.method == "POST":
-        _save_view("tasks")
-        return redirect(url_for("databases.tasks_list", **request.args))
-
     context = _prepare_list_context("tasks")
     if not isinstance(context, dict):
         return context
@@ -157,8 +228,9 @@ def tasks_list():
         "title": Task.title,
         "status": Task.status,
         "updated_at": Task.updated_at,
+        "due_date": Task.due_date,
     }.get(query_state["sort"], Task.updated_at)
-    if query_state["direction"] == "asc":
+    if query_state["dir"] == "asc":
         query = query.order_by(sort_field.asc())
     else:
         query = query.order_by(sort_field.desc())
@@ -170,17 +242,14 @@ def tasks_list():
         tasks=tasks,
         projects=projects,
         statuses=TASK_STATUS_CHOICES,
+        database_key="tasks",
         **context,
     )
 
 
-@databases_bp.route("/projects", methods=["GET", "POST"])
+@databases_bp.route("/projects", methods=["GET"])
 @login_required
 def projects_list():
-    if request.method == "POST":
-        _save_view("projects")
-        return redirect(url_for("databases.projects_list", **request.args))
-
     context = _prepare_list_context("projects")
     if not isinstance(context, dict):
         return context
@@ -203,7 +272,7 @@ def projects_list():
         "status": Project.status,
         "updated_at": Project.updated_at,
     }.get(query_state["sort"], Project.updated_at)
-    query = query.order_by(sort_field.asc() if query_state["direction"] == "asc" else sort_field.desc())
+    query = query.order_by(sort_field.asc() if query_state["dir"] == "asc" else sort_field.desc())
 
     projects = query.all()
     companies = Company.query.order_by(Company.name.asc()).all()
@@ -212,17 +281,14 @@ def projects_list():
         projects=projects,
         companies=companies,
         statuses=PROJECT_STATUS_CHOICES,
+        database_key="projects",
         **context,
     )
 
 
-@databases_bp.route("/companies", methods=["GET", "POST"])
+@databases_bp.route("/companies", methods=["GET"])
 @login_required
 def companies_list():
-    if request.method == "POST":
-        _save_view("companies")
-        return redirect(url_for("databases.companies_list", **request.args))
-
     context = _prepare_list_context("companies")
     if not isinstance(context, dict):
         return context
@@ -242,13 +308,14 @@ def companies_list():
         "status": Company.status,
         "updated_at": Company.updated_at,
     }.get(query_state["sort"], Company.updated_at)
-    query = query.order_by(sort_field.asc() if query_state["direction"] == "asc" else sort_field.desc())
+    query = query.order_by(sort_field.asc() if query_state["dir"] == "asc" else sort_field.desc())
 
     companies = query.all()
     return render_template(
         "databases/companies_list.html",
         companies=companies,
         statuses=COMPANY_STATUS_CHOICES,
+        database_key="companies",
         **context,
     )
 

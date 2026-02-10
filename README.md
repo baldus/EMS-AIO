@@ -146,9 +146,9 @@ All routes require login.
 
 | Route | Methods | Purpose |
 |---|---|---|
-| `/db/tasks` | GET, POST | List tasks + save current tasks view |
-| `/db/projects` | GET, POST | List projects + save current projects view |
-| `/db/companies` | GET, POST | List companies + save current companies view |
+| `/db/tasks` | GET | List tasks (filter/sort/search) |
+| `/db/projects` | GET | List projects (filter/sort/search) |
+| `/db/companies` | GET | List companies (filter/sort/search) |
 | `/db/tasks/new` | GET, POST | Create task |
 | `/db/projects/new` | GET, POST | Create project |
 | `/db/companies/new` | GET, POST | Create company |
@@ -162,6 +162,9 @@ All routes require login.
 | `/db/projects/<id>/delete` | POST | Delete project |
 | `/db/companies/<id>/delete` | POST | Delete company |
 | `/db/tasks/<id>/pages` | POST | Link/unlink task-page relationship |
+| `/db/<db_key>/views/save` | POST | Save current query state as named view |
+| `/db/<db_key>/views/<view_id>/default` | POST | Mark view as default for user/database |
+| `/db/<db_key>/views/<view_id>/delete` | POST | Delete saved view |
 | `/db/projects/<id>/quick-add-task` | POST | Quick-add task under project |
 | `/db/companies/<id>/quick-add-project` | POST | Quick-add project under company |
 
@@ -180,6 +183,18 @@ All routes require login.
 | Save/load views | load only | ✅ | ✅ |
 
 ---
+
+## Querystring Contract
+
+List routes accept:
+- `q=` free-text search over the primary name/title and related parent where relevant
+- `status=` exact match
+- `project_id=` (tasks list)
+- `company_id=` (projects list)
+- `sort=` `title|name|status|updated_at|due_date` (due_date valid for tasks)
+- `dir=` `asc|desc`
+- `include_archived=1` to include archived rows
+
 
 ## Saved Views Behavior
 
