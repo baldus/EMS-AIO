@@ -42,7 +42,36 @@ class AuditLog(db.Model):
     actor = db.relationship("User", backref="audit_logs", foreign_keys=[actor_user_id])
 
 
+class AppSetting(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(120), unique=True, nullable=False)
+    value = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+def get_setting(key: str, default=None):
+    setting = AppSetting.query.filter_by(key=key).first()
+    if not setting or setting.value is None:
+        return default
+    return setting.value
+
+
+def set_setting(key: str, value) -> AppSetting:
+    setting = AppSetting.query.filter_by(key=key).first()
+    stored_value = None if value is None else str(value)
+    if setting is None:
+        setting = AppSetting(key=key, value=stored_value)
+        db.session.add(setting)
+    else:
+        setting.value = stored_value
+    db.session.flush()
+    return setting
+
+
 class Page(db.Model):
+    __bind_key__ = "workspace"
+
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(255), nullable=False)
     body = db.Column(db.Text)
@@ -51,33 +80,37 @@ class Page(db.Model):
 
 
 class Company(db.Model):
+    __bind_key__ = "workspace"
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
     status = db.Column(db.String(20), nullable=False, default="active")
-    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_by_user_id = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    created_by = db.relationship("User", foreign_keys=[created_by_user_id])
     projects = db.relationship("Project", back_populates="company", passive_deletes=True)
 
 
 class Project(db.Model):
+    __bind_key__ = "workspace"
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
     status = db.Column(db.String(20), nullable=False, default="idea")
     company_id = db.Column(db.Integer, db.ForeignKey("company.id", ondelete="SET NULL"), nullable=True)
-    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_by_user_id = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     company = db.relationship("Company", back_populates="projects")
-    created_by = db.relationship("User", foreign_keys=[created_by_user_id])
     tasks = db.relationship("Task", back_populates="project", passive_deletes=True)
 
 
 class TaskPageLink(db.Model):
+    __bind_key__ = "workspace"
     __tablename__ = "task_page_links"
+
     task_id = db.Column(db.Integer, db.ForeignKey("task.id", ondelete="CASCADE"), primary_key=True)
     page_id = db.Column(db.Integer, db.ForeignKey("page.id", ondelete="CASCADE"), primary_key=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -87,33 +120,34 @@ class TaskPageLink(db.Model):
 
 
 class Task(db.Model):
+    __bind_key__ = "workspace"
+
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(255), nullable=False)
     status = db.Column(db.String(20), nullable=False, default="backlog")
     due_date = db.Column(db.Date, nullable=True)
     project_id = db.Column(db.Integer, db.ForeignKey("project.id", ondelete="SET NULL"), nullable=True)
-    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_by_user_id = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     project = db.relationship("Project", back_populates="tasks")
-    created_by = db.relationship("User", foreign_keys=[created_by_user_id])
     task_page_links = db.relationship(
         "TaskPageLink", back_populates="task", cascade="all, delete-orphan", passive_deletes=True
     )
 
 
 class SavedView(db.Model):
+    __bind_key__ = "workspace"
+
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    user_id = db.Column(db.Integer, nullable=False)
     database_key = db.Column(db.String(20), nullable=False)
     name = db.Column(db.String(120), nullable=False)
     query_json = db.Column(db.JSON, nullable=False)
     is_default = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    user = db.relationship("User", backref="saved_views")
 
     __table_args__ = (
         db.UniqueConstraint("user_id", "database_key", "name", name="uq_saved_view_user_db_name"),

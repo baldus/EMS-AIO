@@ -7,7 +7,7 @@ EMS Home is a local-first, Notion-lite workspace for Engineered & Manufacturing 
 
 ## Phase 0 — Platform Foundation
 
-Phase 0 established authentication, RBAC, a global layout shell, and append-only audit logging with local SQLite storage.
+Phase 0 established authentication, RBAC, a global layout shell, startup guardrails, and append-only audit logging with local SQLite storage.
 
 ## Phase 2 — Structured Data (Databases)
 
@@ -41,12 +41,22 @@ Phase 2 introduces first-class relational databases for Tasks, Projects, and Com
 - **Models**: in `app/models.py`
 
 ### Migration approach
-EMS Home uses a lightweight SQL migration script approach (no external migration service):
-- SQL scripts live under `app/migrations/`
-- Applied via `flask apply-migrations`
-- Applied automatically in `create_app()` for idempotent startup safety
+EMS Home relies on SQLAlchemy `create_all` for deterministic local bootstrap.
+- CORE tables are always initialized on startup.
+- WORKSPACE tables are initialized only when workspace storage is configured and an Admin runs **Initialize Workspace DB** from `/admin/storage`.
 
 ---
+
+### Storage split: CORE DB + WORKSPACE DB
+- **CORE DB (always required):** users/auth, audit log, and app settings.
+  - Default path: `instance/ems_home_core.db`
+  - Config key: `CORE_DATABASE_URL` (defaults to `sqlite:///instance/ems_home_core.db`)
+- **WORKSPACE DB (optional):** pages, tasks, projects, companies, and saved views.
+  - Default path (when configured): `instance/ems_home_workspace.db`
+  - Runtime bind key: `workspace`
+
+If workspace storage is not configured, EMS Home still boots and login/admin functions remain available. Workspace routes show a setup message for non-admin users and redirect admins to storage setup.
+
 
 ## Folder Structure
 
@@ -228,15 +238,12 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### 2) Apply migrations
-```bash
-flask apply-migrations
-```
-
-### 3) Start app
+### 2) Start app
 ```bash
 ./start_ems_home.sh
 ```
+
+CORE storage always initializes at an absolute SQLite path under `instance/` (`instance/ems_home_core.db` by default), so startup does not depend on a workspace DB setting.
 
 ---
 
@@ -255,8 +262,33 @@ flask apply-migrations
 
 ## Backup & Restore
 
-Data remains local in SQLite (`instance/ems_home.db` by default). Backup/restore remains file-copy based.
+Data remains local in SQLite and is split across two files by default:
+
+- `instance/ems_home_core.db` (users, auth/audit, settings)
+- `instance/ems_home_workspace.db` (workspace content)
+
+Backup and restore should copy both files together (while app is stopped) for a complete snapshot.
 
 ---
 
 Stability first. Clarity over cleverness. Foundations before features.
+
+
+## Workspace Configuration (Admin)
+1. Sign in as Admin.
+2. Open **Admin → Storage** (`/admin/storage`).
+3. Choose one:
+   - Default workspace DB (`instance/ems_home_workspace.db`)
+   - Custom SQLite path (relative paths are resolved under `instance/`)
+   - Advanced SQLAlchemy URL
+4. Save. The app shows: **Saved. Restart required to apply database connection.**
+5. Restart EMS Home.
+6. Back in `/admin/storage`, click **Initialize Workspace DB**.
+
+> Restart is required after changing workspace URL because SQLAlchemy engines are created per process and are not safely hot-swapped at runtime.
+
+## Troubleshooting
+- **"Workspace DB not configured" banner:** Admin must configure storage at `/admin/storage` and restart the app.
+- **Workspace configured but routes still unavailable:** run **Initialize Workspace DB** after restart to create workspace tables.
+- **SQLite path errors:** verify parent directory exists and is writable by the EMS process user.
+- **`sqlite3.OperationalError: unable to open database file`:** ensure `instance/` exists and is writable by the process user. EMS Home resolves CORE DB to an absolute SQLite URL under `instance/` to avoid relative-path startup failures.

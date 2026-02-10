@@ -1,10 +1,10 @@
+import os
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import os
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import create_app
 from app.extensions import db
@@ -14,7 +14,8 @@ from app.models import User
 @pytest.fixture
 def app(tmp_path):
     os.environ["FLASK_CONFIG"] = "development"
-    os.environ["DATABASE_URL"] = f"sqlite:///{tmp_path / 'test.db'}"
+    os.environ["CORE_DATABASE_URL"] = f"sqlite:///{tmp_path / 'core.db'}"
+    os.environ["WORKSPACE_DATABASE_URL"] = f"sqlite:///{tmp_path / 'workspace.db'}"
     os.environ["SECRET_KEY"] = "test-secret"
 
     app = create_app()

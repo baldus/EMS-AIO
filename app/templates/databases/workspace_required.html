@@ -1,0 +1,12 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="card">
+  <h2>Workspace setup required</h2>
+  <p>The workspace database for Tasks, Projects, and Companies is not available yet.</p>
+  {% if current_user.role == 'Admin' %}
+    <p>Please configure storage from <a href="{{ url_for('admin.storage') }}">Admin Storage</a>, then restart and initialize workspace tables.</p>
+  {% else %}
+    <p>Please contact an Admin to complete workspace storage setup.</p>
+  {% endif %}
+</div>
+{% endblock %}

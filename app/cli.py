@@ -38,7 +38,7 @@ def bootstrap_admin():
 
     app = create_app()
     with app.app_context():
-        db.create_all()
+        db.create_all(bind_key=None)
         existing_admin = (
             User.query.filter_by(role="Admin", is_active=True).order_by(User.id.asc()).first()
         )

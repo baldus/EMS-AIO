@@ -104,7 +104,7 @@ fi
 log "Running bootstrap check for Admin user."
 python -m app.cli bootstrap-admin
 
-DB_PATH="${DATABASE_URL:-sqlite:///$(pwd)/instance/ems_home.db}"
+CORE_DB_PATH="${CORE_DATABASE_URL:-sqlite:///instance/ems_home_core.db}"
 RUN_MODE="${EMS_RUN_MODE:-}"
 if [[ -z "${RUN_MODE}" ]]; then
   if grep -q "^gunicorn" requirements.txt; then
@@ -114,7 +114,7 @@ if [[ -z "${RUN_MODE}" ]]; then
   fi
 fi
 
-log "Starting EMS Home (mode=${RUN_MODE}, db=${DB_PATH}, user=${CURRENT_USER})."
+log "Starting EMS Home (mode=${RUN_MODE}, core_db=${CORE_DB_PATH}, user=${CURRENT_USER})."
 if [[ "${RUN_MODE}" == "dev" ]]; then
   exec python run.py
 elif [[ "${RUN_MODE}" == "prod" ]]; then
