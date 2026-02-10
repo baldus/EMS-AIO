@@ -11,7 +11,18 @@ from app.databases import databases_bp
 from app.extensions import db, login_manager
 from app.main import main_bp
 from app.models import User
-from app.workspace import clean_url, resolve_workspace_url, workspace_configured
+from app.workspace import clean_url, resolve_core_url, resolve_workspace_url, workspace_configured
+
+
+def _ensure_instance_dir(instance_path: str) -> str:
+    absolute_instance = os.path.abspath(instance_path)
+    os.makedirs(absolute_instance, exist_ok=True)
+    if not os.access(absolute_instance, os.W_OK):
+        raise RuntimeError(
+            f"Instance directory is not writable: {absolute_instance}. "
+            "Fix permissions for instance/ and try again."
+        )
+    return absolute_instance
 
 
 def create_app():
@@ -24,13 +35,20 @@ def create_app():
     else:
         app.config.from_object("app.config.DevelopmentConfig")
 
-    os.makedirs(app.instance_path, exist_ok=True)
+    instance_dir = _ensure_instance_dir(app.instance_path)
 
-    core_url = clean_url(app.config.get("CORE_DATABASE_URL")) or "sqlite:///instance/ems_home_core.db"
-    workspace_url = resolve_workspace_url(core_url, app.config.get("WORKSPACE_DATABASE_URL"))
+    core_url = resolve_core_url(
+        instance_path=instance_dir,
+        configured_url=clean_url(os.environ.get("CORE_DATABASE_URL")),
+        legacy_database_url=clean_url(os.environ.get("DATABASE_URL")),
+    )
+    workspace_url = resolve_workspace_url(core_url, clean_url(os.environ.get("WORKSPACE_DATABASE_URL")))
 
     app.config["SQLALCHEMY_DATABASE_URI"] = core_url
-    app.config["SQLALCHEMY_BINDS"] = {"workspace": workspace_url} if workspace_url else {}
+    if workspace_url:
+        app.config["SQLALCHEMY_BINDS"] = {"workspace": workspace_url}
+    else:
+        app.config.pop("SQLALCHEMY_BINDS", None)
 
     db.init_app(app)
     login_manager.init_app(app)
@@ -70,6 +88,8 @@ def create_app():
             click.echo("Admin user created.")
 
     with app.app_context():
-        db.create_all(bind_key=[None])
+        db.create_all(bind_key=None)
+        if workspace_configured(app):
+            db.create_all(bind_key="workspace")
 
     return app

@@ -11,6 +11,7 @@ from app.extensions import db
 
 WORKSPACE_SETTING_KEY = "workspace_database_url"
 DEFAULT_WORKSPACE_NAME = "ems_home_workspace.db"
+DEFAULT_CORE_NAME = "ems_home_core.db"
 WORKSPACE_TABLES = {"page", "company", "project", "task", "task_page_links", "saved_view"}
 
 
@@ -21,8 +22,41 @@ def clean_url(value):
     return cleaned or None
 
 
+def build_sqlite_url(db_path: Path) -> str:
+    return f"sqlite:///{db_path.resolve()}"
+
+
+def default_core_url(instance_path: str) -> str:
+    return build_sqlite_url(Path(instance_path) / DEFAULT_CORE_NAME)
+
+
 def default_workspace_url(instance_path: str) -> str:
-    return f"sqlite:///{Path(instance_path) / DEFAULT_WORKSPACE_NAME}"
+    return build_sqlite_url(Path(instance_path) / DEFAULT_WORKSPACE_NAME)
+
+
+def _normalize_sqlite_url(candidate_url: str | None, fallback_path: Path) -> str:
+    cleaned = clean_url(candidate_url)
+    if not cleaned:
+        return build_sqlite_url(fallback_path)
+
+    try:
+        parsed = make_url(cleaned)
+    except Exception:
+        return build_sqlite_url(fallback_path)
+
+    if not parsed.drivername.startswith("sqlite"):
+        raise RuntimeError("CORE_DATABASE_URL must be a sqlite URL.")
+
+    database = parsed.database or ""
+    db_path = Path(database)
+    if not db_path.is_absolute():
+        db_path = fallback_path.parent / db_path
+    return build_sqlite_url(db_path)
+
+
+def resolve_core_url(instance_path: str, configured_url: str | None, legacy_database_url: str | None) -> str:
+    fallback = Path(instance_path) / DEFAULT_CORE_NAME
+    return _normalize_sqlite_url(configured_url or legacy_database_url, fallback)
 
 
 def _read_workspace_setting_from_core_sqlite(core_db_url: str) -> str | None:
@@ -51,10 +85,10 @@ def _read_workspace_setting_from_core_sqlite(core_db_url: str) -> str | None:
 
 
 def resolve_workspace_url(core_db_url: str, env_workspace_url: str | None) -> str | None:
-    explicit = clean_url(env_workspace_url)
-    if explicit:
-        return explicit
-    return _read_workspace_setting_from_core_sqlite(core_db_url)
+    from_setting = _read_workspace_setting_from_core_sqlite(core_db_url)
+    if from_setting:
+        return from_setting
+    return clean_url(env_workspace_url)
 
 
 def workspace_configured(app=None) -> bool:

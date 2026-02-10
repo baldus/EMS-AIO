@@ -243,6 +243,8 @@ cp .env.example .env
 ./start_ems_home.sh
 ```
 
+CORE storage always initializes at an absolute SQLite path under `instance/` (`instance/ems_home_core.db` by default), so startup does not depend on a workspace DB setting.
+
 ---
 
 ## Verify Phase 2 Locally
@@ -289,3 +291,4 @@ Stability first. Clarity over cleverness. Foundations before features.
 - **"Workspace DB not configured" banner:** Admin must configure storage at `/admin/storage` and restart the app.
 - **Workspace configured but routes still unavailable:** run **Initialize Workspace DB** after restart to create workspace tables.
 - **SQLite path errors:** verify parent directory exists and is writable by the EMS process user.
+- **`sqlite3.OperationalError: unable to open database file`:** ensure `instance/` exists and is writable by the process user. EMS Home resolves CORE DB to an absolute SQLite URL under `instance/` to avoid relative-path startup failures.

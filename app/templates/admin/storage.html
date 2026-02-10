@@ -5,6 +5,7 @@
   <p>Configure the optional workspace database for pages, tasks, projects, and companies.</p>
   <p><strong>Runtime configured:</strong> {{ 'Yes' if workspace_runtime_configured else 'No' }}</p>
   <p><strong>Runtime initialized:</strong> {{ 'Yes' if workspace_runtime_ready else 'No' }}</p>
+  <p><strong>Status:</strong> {{ 'configured' if workspace_setting_exists else 'not configured' }}</p>
   <p><strong>Saved setting:</strong> {{ current_setting or 'Not configured' }}</p>
 </div>
 
@@ -29,7 +30,7 @@
   <h3>Initialize Workspace DB</h3>
   <p>Create workspace tables after the workspace database URL is configured and the app is restarted.</p>
   <form method="post" action="{{ url_for('admin.initialize_workspace') }}">
-    <button type="submit">Initialize Workspace DB</button>
+    <button type="submit" {% if not workspace_setting_exists %}disabled{% endif %}>Initialize Workspace DB</button>
   </form>
 </div>
 {% endblock %}

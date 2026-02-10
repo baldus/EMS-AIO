@@ -15,12 +15,8 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
 
-    CORE_DATABASE_URL = _clean_env_value("CORE_DATABASE_URL") or "sqlite:///instance/ems_home_core.db"
+    CORE_DATABASE_URL = _clean_env_value("CORE_DATABASE_URL")
     WORKSPACE_DATABASE_URL = _clean_env_value("WORKSPACE_DATABASE_URL")
-
-    SQLALCHEMY_DATABASE_URI = CORE_DATABASE_URL
-    if WORKSPACE_DATABASE_URL:
-        SQLALCHEMY_BINDS = {"workspace": WORKSPACE_DATABASE_URL}
 
 
 class DevelopmentConfig(Config):

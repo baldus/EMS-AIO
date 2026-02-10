@@ -159,6 +159,7 @@ def storage():
         "admin/storage.html",
         current_setting=current_setting,
         default_workspace_url=default_url,
+        workspace_setting_exists=bool(clean_url(current_setting)),
         workspace_runtime_configured=workspace_configured(),
         workspace_runtime_ready=workspace_ready(),
     )
