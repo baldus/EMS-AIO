@@ -1,47 +1,50 @@
 # EMS Home
 Local-First Operations Workspace
 
-EMS Home is a local-first, Notion-lite workspace for Engineered & Manufacturing Solutions (EMS). It runs entirely on a dedicated PC with no SaaS dependencies or subscriptions. Phase 0 focuses on secure local authentication, foundational navigation, and audit logging.
+EMS Home is a local-first, Notion-lite workspace for Engineered & Manufacturing Solutions (EMS). It runs entirely on a dedicated PC with no SaaS dependencies or subscriptions.
 
 ---
 
 ## Phase 0 — Platform Foundation
 
-### Purpose
-Build a stable, boring foundation that future phases can trust. This phase avoids unnecessary complexity and keeps all data on local hardware.
+Phase 0 established authentication, RBAC, a global layout shell, and append-only audit logging with local SQLite storage.
 
-### Definition of Done
-Phase 0 is complete when:
+## Phase 2 — Structured Data (Databases)
 
-- The app runs locally on a dedicated PC.
-- Users can log in/out with local username/password.
-- Roles exist and are enforced: **Admin**, **Editor**, **Viewer**.
-- All authenticated pages share a global layout (header + sidebar + main).
-- A basic local audit log records key actions.
-- The canonical startup script (`./start_ems_home.sh`) validates the environment and launches the app.
-- This README documents architecture, permissions, run steps, and backup/restore.
+### Goal
+Phase 2 introduces first-class relational databases for Tasks, Projects, and Companies with server-rendered table/detail views, saved views, and relationship workflows.
+
+### Scope delivered
+- Structured SQLAlchemy models for `Company`, `Project`, `Task`, `SavedView`, and task-to-page linking (`task_page_links`).
+- New `/db/*` blueprint with list/detail/create/edit/delete routes.
+- Query-parameter filtering, sorting, and search for each table view.
+- Per-user saved views with optional per-database default.
+- Relationship UX:
+  - Task ↔ Project + Task ↔ Page links
+  - Project ↔ Company + quick-add Task
+  - Company ↔ Projects + quick-add Project
+- Audit log entries on all create/update/delete actions for tasks/projects/companies.
+- Lightweight SQLite-compatible SQL migration script and apply command.
 
 ---
 
 ## Architecture Overview
 
 ### App Factory + Blueprints
-EMS Home uses a Flask application factory to keep configuration, extensions, and blueprints cleanly isolated.
-
 - **Factory**: `create_app()` in `app/__init__.py`
 - **Blueprints**:
   - `auth`: login/logout
   - `main`: home page
   - `admin`: user management
+  - `databases`: structured data UI under `/db/*`
 - **Extensions**: SQLAlchemy + Flask-Login in `app/extensions.py`
-- **Models**: `User`, `AuditLog` in `app/models.py`
+- **Models**: in `app/models.py`
 
-### Data + Session Flow (Phase 0)
-1. Flask app factory initializes configuration and extensions.
-2. Blueprints register routes.
-3. Flask-Login enforces login and session handling.
-4. SQLAlchemy stores users and audit logs in local SQLite.
-5. Templates render within the authenticated layout shell.
+### Migration approach
+EMS Home uses a lightweight SQL migration script approach (no external migration service):
+- SQL scripts live under `app/migrations/`
+- Applied via `flask apply-migrations`
+- Applied automatically in `create_app()` for idempotent startup safety
 
 ---
 
@@ -50,203 +53,209 @@ EMS Home uses a Flask application factory to keep configuration, extensions, and
 ```
 EMS-AIO/
 ├── app/
-│   ├── __init__.py        # App factory, CLI commands, setup
-│   ├── config.py          # Development/Production config
-│   ├── extensions.py      # SQLAlchemy + LoginManager
-│   ├── decorators.py      # RBAC helpers
-│   ├── models.py          # User + AuditLog models
+│   ├── __init__.py
+│   ├── config.py
+│   ├── extensions.py
+│   ├── decorators.py
+│   ├── models.py
+│   ├── migrations.py
+│   ├── migrations/
+│   │   └── phase2_structured_data.sql
 │   ├── auth/
-│   │   ├── __init__.py
-│   │   └── routes.py       # /login, /logout
 │   ├── main/
-│   │   ├── __init__.py
-│   │   └── routes.py       # / (home)
 │   ├── admin/
+│   ├── databases/
 │   │   ├── __init__.py
-│   │   └── routes.py       # /admin/users
+│   │   └── routes.py
 │   └── templates/
-│       ├── layout.html     # Global header + sidebar
-│       ├── login.html
-│       ├── home.html
-│       ├── admin/
-│       │   ├── users.html
-│       │   └── user_form.html
-│       └── errors/403.html
-├── instance/               # Local SQLite DB (gitignored)
-├── .env.example            # Environment variables template
-├── .gitignore
-├── requirements.txt
-├── run.py                  # Local dev entrypoint
-├── start_ems_home.sh        # Canonical startup script
-├── wsgi.py                 # Production entrypoint
+│       ├── layout.html
+│       ├── databases/
+│       │   ├── tasks_list.html
+│       │   ├── projects_list.html
+│       │   ├── companies_list.html
+│       │   ├── task_detail.html
+│       │   ├── project_detail.html
+│       │   ├── company_detail.html
+│       │   ├── task_form.html
+│       │   ├── project_form.html
+│       │   ├── company_form.html
+│       │   └── _saved_view.html
+├── tests/
+│   ├── conftest.py
+│   └── test_phase2_databases.py
 └── README.md
 ```
 
 ---
 
-## Permissions Model (RBAC)
+## Schema Definitions (Phase 2)
 
-### Roles
-- **Viewer**: Can view pages.
-- **Editor**: Future ability to edit content.
-- **Admin**: Full access, including user management.
+### Company
+- `id` (PK)
+- `name` (required)
+- `status` (`active` / `inactive`)
+- `created_by_user_id` (FK → `user.id`)
+- `created_at`, `updated_at`
 
-### Enforcement
-- All routes (except `/login` and static assets) are protected by `@login_required`.
-- Admin routes under `/admin/*` require `@roles_required("Admin")`.
-- Admin-only UI links are hidden for non-admins.
+### Project
+- `id` (PK)
+- `name` (required)
+- `status` (`idea` / `active` / `blocked` / `done` / `archived`)
+- `company_id` (nullable FK → `company.id`, `ON DELETE SET NULL`)
+- `created_by_user_id` (FK → `user.id`)
+- `created_at`, `updated_at`
+
+### Task
+- `id` (PK)
+- `title` (required)
+- `status` (`backlog` / `next` / `doing` / `blocked` / `done` / `archived`)
+- `due_date` (nullable)
+- `project_id` (nullable FK → `project.id`, `ON DELETE SET NULL`)
+- `created_by_user_id` (FK → `user.id`)
+- `created_at`, `updated_at`
+
+### Task ↔ Page links
+- Table: `task_page_links`
+- Fields: `task_id` (FK → `task.id`), `page_id` (FK → `page.id`)
+- Composite PK enforces uniqueness of (`task_id`, `page_id`)
+- Cascade delete when a linked task is deleted
+
+### SavedView
+- `id` (PK)
+- `user_id` (FK → `user.id`)
+- `database_key` (`tasks` | `projects` | `companies`)
+- `name`
+- `query_json` (filters/sort/search payload)
+- `is_default` (boolean)
+- `created_at`, `updated_at`
+
+---
+
+## Data Integrity Rules
+
+- Deleting a **Company** sets `project.company_id = NULL`.
+- Deleting a **Project** sets `task.project_id = NULL`.
+- Deleting a **Task** removes its `task_page_links`.
+- Archived items are hidden by default; pass `include_archived=1` to show them.
+
+---
+
+## Route Reference (Phase 2)
+
+All routes require login.
+
+| Route | Methods | Purpose |
+|---|---|---|
+| `/db/tasks` | GET | List tasks (filter/sort/search) |
+| `/db/projects` | GET | List projects (filter/sort/search) |
+| `/db/companies` | GET | List companies (filter/sort/search) |
+| `/db/tasks/new` | GET, POST | Create task |
+| `/db/projects/new` | GET, POST | Create project |
+| `/db/companies/new` | GET, POST | Create company |
+| `/db/tasks/<id>` | GET | Task detail |
+| `/db/projects/<id>` | GET | Project detail |
+| `/db/companies/<id>` | GET | Company detail |
+| `/db/tasks/<id>/edit` | GET, POST | Edit task |
+| `/db/projects/<id>/edit` | GET, POST | Edit project |
+| `/db/companies/<id>/edit` | GET, POST | Edit company |
+| `/db/tasks/<id>/delete` | POST | Delete task |
+| `/db/projects/<id>/delete` | POST | Delete project |
+| `/db/companies/<id>/delete` | POST | Delete company |
+| `/db/tasks/<id>/pages` | POST | Link/unlink task-page relationship |
+| `/db/<db_key>/views/save` | POST | Save current query state as named view |
+| `/db/<db_key>/views/<view_id>/default` | POST | Mark view as default for user/database |
+| `/db/<db_key>/views/<view_id>/delete` | POST | Delete saved view |
+| `/db/projects/<id>/quick-add-task` | POST | Quick-add task under project |
+| `/db/companies/<id>/quick-add-project` | POST | Quick-add project under company |
+
+---
+
+## Permissions Matrix (RBAC)
+
+| Capability | Viewer | Editor | Admin |
+|---|---:|---:|---:|
+| View Tasks/Projects/Companies | ✅ | ✅ | ✅ |
+| Create Tasks/Projects/Companies | ❌ | ✅ | ✅ |
+| Edit own Tasks/Projects/Companies | ❌ | ✅ | ✅ |
+| Edit others' Tasks/Projects/Companies | ❌ | ❌ | ✅ |
+| Delete own Tasks/Projects/Companies | ❌ | ✅ | ✅ |
+| Delete others' Tasks/Projects/Companies | ❌ | ❌ | ✅ |
+| Save/load views | load only | ✅ | ✅ |
+
+---
+
+## Querystring Contract
+
+List routes accept:
+- `q=` free-text search over the primary name/title and related parent where relevant
+- `status=` exact match
+- `project_id=` (tasks list)
+- `company_id=` (projects list)
+- `sort=` `title|name|status|updated_at|due_date` (due_date valid for tasks)
+- `dir=` `asc|desc`
+- `include_archived=1` to include archived rows
+
+
+## Saved Views Behavior
+
+- Saved views are scoped by `(user_id, database_key, name)`.
+- Saving updates existing view if the same name already exists for that user/database.
+- A single default view can be set per user/database (existing default is unset when a new default is chosen).
+- Stored state includes: search query, filters, sort field, sort direction, related-entity filters, and `include_archived`.
 
 ---
 
 ## Audit Logging
 
-Phase 0 stores an append-only audit log locally:
+AuditLog records create/update/delete for structured entities:
+- `task_created`, `task_updated`, `task_deleted`
+- `project_created`, `project_updated`, `project_deleted`
+- `company_created`, `company_updated`, `company_deleted`
 
-- Login and logout events.
-- User created/updated/disabled actions.
-- Role changes and password resets.
-
-Audit logs are stored in the local SQLite DB and are not editable by users.
+Entity type and entity ID are persisted for each action.
 
 ---
 
 ## Running Locally
 
-### 1) Clone and set up a virtual environment
-
+### 1) Setup
 ```bash
 git clone <your-repo-url>
 cd EMS-AIO
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-### 2) Configure environment variables
-
-```bash
+pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` and set at minimum:
-
-- `SECRET_KEY` (required; do not commit)
-- `FLASK_CONFIG` (`development` or `production`)
-
-### 3) Initialize the database
-
-The SQLite database is created automatically on first run at:
-
-```
-instance/ems_home.db
+### 2) Apply migrations
+```bash
+flask apply-migrations
 ```
 
-### 4) Start the application (canonical)
-
-The **only supported** way to run EMS Home locally is the startup script:
-
+### 3) Start app
 ```bash
 ./start_ems_home.sh
 ```
 
-The script will:
-
-- Validate OS, Python version, and allowed OS user.
-- Ensure `.env` exists and validate required settings.
-- Create/activate `.venv` and install dependencies.
-- Bootstrap the first Admin user if none exist.
-- Launch the app in dev or prod mode based on `EMS_RUN_MODE`.
-
 ---
 
-## Starting EMS Home
+## Verify Phase 2 Locally
 
-### Required environment variables (`.env`)
-- `SECRET_KEY`: required, must not be a placeholder value.
-- `FLASK_ENV`: required (if missing, the script defaults to `production` and warns).
-- `FLASK_CONFIG`: `development` or `production`.
-- `ALLOWED_START_USERS`: comma-separated list (default: `ems,josh`).
-- `DATABASE_URL` (optional): override the default SQLite location.
-
-### First-run Admin Bootstrap
-On the first successful run, the startup script will prompt for an Admin username/password if **no active Admin exists**. It creates that Admin user once and records an audit log entry with action `bootstrap_admin_created`. Subsequent runs will skip bootstrap with `Admin present; bootstrap skipped.`
-
-### Run modes
-Set `EMS_RUN_MODE` in `.env` to control how the app starts:
-
-- `prod` (default when `gunicorn` is installed): `gunicorn -w ${GUNICORN_WORKERS:-2} -b ${BIND_ADDR:-0.0.0.0}:${PORT:-8000} wsgi:app`
-- `dev`: `python run.py`
-
----
-
-## Troubleshooting
-
-### Wrong OS user
-The script enforces `ALLOWED_START_USERS` from `.env`. If you see a message like `User <name> is not allowed`, update `ALLOWED_START_USERS` or run as an allowed user.
-
-### Missing `.env`
-Copy the example file and set required values:
-
-```bash
-cp .env.example .env
-```
-
-### Bad `SECRET_KEY`
-If you see `SECRET_KEY is set to a placeholder`, set a unique, strong value in `.env`.
-
-### Virtualenv / pip issues
-If dependency installation fails, ensure you have network access to PyPI and that Python 3.11+ is installed. Then re-run `./start_ems_home.sh`.
-
-### Database permission errors
-If `instance/` is not writable, fix permissions and rerun the script. The SQLite DB lives at `instance/ems_home.db` by default.
+1. Login as Admin or Editor.
+2. Open `/db/companies`, create a company.
+3. Open company detail, quick-add a project.
+4. Open project detail, quick-add a task.
+5. Open task detail, link/unlink a page.
+6. On each list page, apply filters/sort/search and save current view.
+7. Confirm archived records are hidden by default and shown with `include_archived=1`.
+8. Confirm Viewer cannot create/edit/delete records.
 
 ---
 
 ## Backup & Restore
 
-### Where data lives
-- SQLite database: `instance/ems_home.db`
-
-### Backup procedure
-1. Stop the app.
-2. Copy the database file:
-
-```bash
-cp instance/ems_home.db /path/to/backup/ems_home_$(date +%F).db
-```
-
-3. Restart the app.
-
-### Restore procedure
-1. Stop the app.
-2. Replace the database file:
-
-```bash
-cp /path/to/backup/ems_home_YYYY-MM-DD.db instance/ems_home.db
-```
-
-3. Restart the app.
-
----
-
-## Security Notes
-
-- Passwords are hashed using Werkzeug (`generate_password_hash` / `check_password_hash`).
-- Sessions are managed by Flask-Login.
-- `SECRET_KEY` must be unique and never committed.
-- Run behind VPN (WireGuard/Tailscale/OpenVPN) when remote access is required.
-- The app is intended for trusted internal networks only.
-
----
-
-## Out of Scope (Phase 0)
-
-The following are intentionally excluded until later phases:
-
-- Notes, documents, or attachments
-- Projects, tasks, or metrics dashboards
-- Search or tagging
-- External integrations
-- Automation
+Data remains local in SQLite (`instance/ems_home.db` by default). Backup/restore remains file-copy based.
 
 ---
 

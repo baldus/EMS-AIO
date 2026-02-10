@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+{% block title %}{{ 'Edit Project' if project else 'New Project' }} | EMS Home{% endblock %}
+{% block content %}
+<div class="card">
+<h2>{{ 'Edit Project' if project else 'New Project' }}</h2>
+<form method="post">
+<label>Name<input type="text" name="name" value="{{ project.name if project else '' }}" required></label>
+<label>Status<select name="status">{% for s in statuses %}<option value="{{ s }}" {% if project and project.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+<label>Company<select name="company_id"><option value="">None</option>{% for company in companies %}<option value="{{ company.id }}" {% if project and project.company_id==company.id %}selected{% endif %}>{{ company.name }}</option>{% endfor %}</select></label>
+<button type="submit">Save</button>
+</form>
+</div>
+{% endblock %}

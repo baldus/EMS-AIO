@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+{% block title %}{{ 'Edit Task' if task else 'New Task' }} | EMS Home{% endblock %}
+{% block content %}
+<div class="card">
+<h2>{{ 'Edit Task' if task else 'New Task' }}</h2>
+<form method="post">
+<label>Title<input type="text" name="title" value="{{ task.title if task else '' }}" required></label>
+<label>Status<select name="status">{% for s in ('backlog','next','doing','blocked','done','archived') %}<option value="{{ s }}" {% if task and task.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+<label>Due Date<input type="date" name="due_date" value="{{ task.due_date if task and task.due_date else '' }}"></label>
+<label>Project<select name="project_id"><option value="">None</option>{% for project in projects %}<option value="{{ project.id }}" {% if task and task.project_id==project.id %}selected{% endif %}>{{ project.name }}</option>{% endfor %}</select></label>
+<button type="submit">Save</button>
+</form>
+</div>
+{% endblock %}

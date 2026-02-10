@@ -1,0 +1,12 @@
+{% extends "layout.html" %}
+{% block title %}{{ 'Edit Company' if company else 'New Company' }} | EMS Home{% endblock %}
+{% block content %}
+<div class="card">
+<h2>{{ 'Edit Company' if company else 'New Company' }}</h2>
+<form method="post">
+<label>Name<input type="text" name="name" value="{{ company.name if company else '' }}" required></label>
+<label>Status<select name="status">{% for s in statuses %}<option value="{{ s }}" {% if company and company.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+<button type="submit">Save</button>
+</form>
+</div>
+{% endblock %}

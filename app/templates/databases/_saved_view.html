@@ -1,0 +1,40 @@
+<div class="card">
+    <h3>Saved Views</h3>
+    <form method="get" class="inline" style="margin-right: 0.75rem;">
+        <select name="view_id">
+            <option value="">Select saved view</option>
+            {% for view in saved_views %}
+                <option value="{{ view.id }}" {% if selected_view and selected_view.id == view.id %}selected{% endif %}>{{ view.name }}{% if view.is_default %} (default){% endif %}</option>
+            {% endfor %}
+        </select>
+        <input type="hidden" name="use_view" value="1">
+        <button type="submit">Load</button>
+    </form>
+    <form method="get" class="inline" style="margin-right: 0.75rem;">
+        <input type="hidden" name="use_default" value="1">
+        <button type="submit">Load default</button>
+    </form>
+
+    {% if current_user.role != 'Viewer' %}
+    <form method="post" action="{{ url_for('databases.save_view', db_key=database_key, **request.args.to_dict()) }}">
+        {% for k, v in query.items() %}
+            <input type="hidden" name="{{ k }}" value="{{ v }}">
+        {% endfor %}
+        <label for="view_name">Save current view</label>
+        <input id="view_name" type="text" name="view_name" maxlength="120" required>
+        <label><input type="checkbox" name="is_default"> Set as default</label>
+        <button type="submit">Save current view</button>
+    </form>
+
+    {% if selected_view %}
+    <div style="margin-top: 0.75rem;">
+        <form method="post" class="inline" action="{{ url_for('databases.set_default_view', db_key=database_key, view_id=selected_view.id, **request.args.to_dict()) }}">
+            <button type="submit">Set selected as default</button>
+        </form>
+        <form method="post" class="inline" action="{{ url_for('databases.delete_view', db_key=database_key, view_id=selected_view.id, **request.args.to_dict()) }}" onsubmit="return confirm('Delete saved view?');">
+            <button type="submit">Delete selected</button>
+        </form>
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
