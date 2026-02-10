@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% block title %}Project {{ project.id }} | EMS Home{% endblock %}
+{% block content %}
+<div class="card">
+<h2>{{ project.name }}</h2>
+<p>Status: {{ project.status }}</p>
+<p>Company: {% if project.company %}<a href="{{ url_for('databases.company_detail', company_id=project.company.id) }}">{{ project.company.name }}</a>{% else %}-{% endif %}</p>
+{% if current_user.role == 'Admin' or (current_user.role == 'Editor' and project.created_by_user_id == current_user.id) %}
+<a class="button-link" href="{{ url_for('databases.project_edit', project_id=project.id) }}">Edit Project</a>
+<form method="post" action="{{ url_for('databases.project_delete', project_id=project.id) }}" class="inline"><button type="submit">Delete</button></form>
+{% endif %}
+</div>
+<div class="card">
+<h3>Tasks</h3>
+<ul>
+{% for task in project.tasks %}
+<li><a href="{{ url_for('databases.task_detail', task_id=task.id) }}">{{ task.title }}</a> ({{ task.status }})</li>
+{% else %}<li>No tasks yet.</li>{% endfor %}
+</ul>
+{% if current_user.role != 'Viewer' and (current_user.role == 'Admin' or project.created_by_user_id == current_user.id) %}
+<form method="post" action="{{ url_for('databases.project_quick_add_task', project_id=project.id) }}">
+<label>Task title<input type="text" name="title" required></label>
+<label>Status<select name="status">{% for s in task_statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select></label>
+<button type="submit">Quick Add Task</button>
+</form>
+{% endif %}
+</div>
+{% endblock %}

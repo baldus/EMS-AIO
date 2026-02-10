@@ -1,0 +1,23 @@
+{% extends "layout.html" %}
+{% block title %}Projects | EMS Home{% endblock %}
+{% block content %}
+<h2>Projects</h2>
+{% include "databases/_saved_view.html" %}
+<div class="card">
+<form method="get" class="filters">
+<div><label>Search<input type="text" name="q" value="{{ query.q }}"></label></div>
+<div><label>Status<select name="status"><option value="">Any</option>{% for s in statuses %}<option value="{{ s }}" {% if query.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label></div>
+<div><label>Company<select name="company_id"><option value="">Any</option>{% for c in companies %}<option value="{{ c.id }}" {% if query.company_id==(c.id|string) %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></label></div>
+<div><label>Sort<select name="sort"><option value="updated_at">Updated</option><option value="name" {% if query.sort=='name' %}selected{% endif %}>Name</option><option value="status" {% if query.sort=='status' %}selected{% endif %}>Status</option></select></label></div>
+<div><label>Direction<select name="direction"><option value="desc">Desc</option><option value="asc" {% if query.direction=='asc' %}selected{% endif %}>Asc</option></select></label></div>
+<div><label><input type="checkbox" name="include_archived" value="1" {% if query.include_archived=='1' %}checked{% endif %}> Include archived</label></div>
+<button type="submit">Apply</button>
+</form>
+{% if current_user.role != 'Viewer' %}<a class="button-link" href="{{ url_for('databases.project_create') }}">New Project</a>{% endif %}
+<table><tr><th>Name</th><th>Status</th><th>Company</th><th>Updated</th></tr>
+{% for project in projects %}
+<tr class="clickable" onclick="window.location='{{ url_for('databases.project_detail', project_id=project.id) }}'"><td>{{ project.name }}</td><td>{{ project.status }}</td><td>{{ project.company.name if project.company else '-' }}</td><td>{{ project.updated_at }}</td></tr>
+{% else %}<tr><td colspan="4">No projects found.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

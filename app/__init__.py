@@ -7,8 +7,10 @@ from flask import Flask, render_template
 
 from app.admin import admin_bp
 from app.auth import auth_bp
+from app.databases import databases_bp
 from app.extensions import db, login_manager
 from app.main import main_bp
+from app.migrations import apply_all_migrations
 from app.models import ROLE_CHOICES, User
 
 
@@ -39,10 +41,19 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(databases_bp)
 
     @app.errorhandler(403)
     def forbidden(_error):
         return render_template("errors/403.html"), 403
+
+
+    @app.cli.command("apply-migrations")
+    def apply_migrations_command():
+        """Apply SQL migrations."""
+        with app.app_context():
+            apply_all_migrations(app)
+            click.echo("Migrations applied.")
 
     @app.cli.command("create-admin")
     @click.argument("username")
@@ -59,6 +70,7 @@ def create_app():
             click.echo("Admin user created.")
 
     with app.app_context():
+        apply_all_migrations(app)
         db.create_all()
 
     return app

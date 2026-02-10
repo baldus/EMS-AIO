@@ -1,0 +1,24 @@
+<div class="card">
+    <h3>Saved Views</h3>
+    <form method="get" class="inline">
+        <select name="view_id">
+            <option value="">Select saved view</option>
+            {% for view in saved_views %}
+                <option value="{{ view.id }}" {% if selected_view and selected_view.id == view.id %}selected{% endif %}>{{ view.name }}{% if view.is_default %} (default){% endif %}</option>
+            {% endfor %}
+        </select>
+        <input type="hidden" name="use_view" value="1">
+        <button type="submit">Load</button>
+    </form>
+    {% if current_user.role != 'Viewer' %}
+    <form method="post">
+        {% for k, v in query.items() %}
+            <input type="hidden" name="{{ k }}" value="{{ v }}">
+        {% endfor %}
+        <label for="view_name">Save current view</label>
+        <input id="view_name" type="text" name="view_name" maxlength="120" required>
+        <label><input type="checkbox" name="is_default"> Set as default</label>
+        <button type="submit">Save current view</button>
+    </form>
+    {% endif %}
+</div>
