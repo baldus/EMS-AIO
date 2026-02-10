@@ -6,6 +6,8 @@ from sqlalchemy import or_
 
 from app.databases import databases_bp
 from app.extensions import db
+from app.workspace import workspace_configured, workspace_ready
+
 from app.models import (
     COMPANY_STATUS_CHOICES,
     DATABASE_KEYS,
@@ -19,6 +21,25 @@ from app.models import (
     Task,
     TaskPageLink,
 )
+
+def _workspace_guard_response():
+    if current_user.role == "Admin":
+        if not workspace_configured():
+            flash("Workspace DB not configured. Configure storage first.", "error")
+        else:
+            flash("Workspace DB is configured but not initialized. Initialize it from Admin > Storage.", "error")
+        return redirect(url_for("admin.storage"))
+
+    return render_template("databases/workspace_required.html"), 200
+
+
+@databases_bp.before_request
+@login_required
+def ensure_workspace_available():
+    if workspace_configured() and workspace_ready():
+        return None
+    return _workspace_guard_response()
+
 
 LIST_ENDPOINTS = {
     "tasks": "databases.tasks_list",

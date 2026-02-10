@@ -10,8 +10,8 @@ from app.auth import auth_bp
 from app.databases import databases_bp
 from app.extensions import db, login_manager
 from app.main import main_bp
-from app.migrations import apply_all_migrations
-from app.models import ROLE_CHOICES, User
+from app.models import User
+from app.workspace import clean_url, resolve_workspace_url, workspace_configured
 
 
 def create_app():
@@ -25,10 +25,12 @@ def create_app():
         app.config.from_object("app.config.DevelopmentConfig")
 
     os.makedirs(app.instance_path, exist_ok=True)
-    default_db_path = os.path.join(app.instance_path, "ems_home.db")
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-        "DATABASE_URL", f"sqlite:///{default_db_path}"
-    )
+
+    core_url = clean_url(app.config.get("CORE_DATABASE_URL")) or "sqlite:///instance/ems_home_core.db"
+    workspace_url = resolve_workspace_url(core_url, app.config.get("WORKSPACE_DATABASE_URL"))
+
+    app.config["SQLALCHEMY_DATABASE_URI"] = core_url
+    app.config["SQLALCHEMY_BINDS"] = {"workspace": workspace_url} if workspace_url else {}
 
     db.init_app(app)
     login_manager.init_app(app)
@@ -38,6 +40,12 @@ def create_app():
     def load_user(user_id):
         return User.query.get(int(user_id))
 
+    @app.context_processor
+    def inject_workspace_state():
+        return {
+            "workspace_is_configured": workspace_configured(),
+        }
+
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp)
@@ -46,14 +54,6 @@ def create_app():
     @app.errorhandler(403)
     def forbidden(_error):
         return render_template("errors/403.html"), 403
-
-
-    @app.cli.command("apply-migrations")
-    def apply_migrations_command():
-        """Apply SQL migrations."""
-        with app.app_context():
-            apply_all_migrations(app)
-            click.echo("Migrations applied.")
 
     @app.cli.command("create-admin")
     @click.argument("username")
@@ -70,7 +70,6 @@ def create_app():
             click.echo("Admin user created.")
 
     with app.app_context():
-        apply_all_migrations(app)
-        db.create_all()
+        db.create_all(bind_key=[None])
 
     return app

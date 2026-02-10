@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="card">
+  <h2>Workspace Storage</h2>
+  <p>Configure the optional workspace database for pages, tasks, projects, and companies.</p>
+  <p><strong>Runtime configured:</strong> {{ 'Yes' if workspace_runtime_configured else 'No' }}</p>
+  <p><strong>Runtime initialized:</strong> {{ 'Yes' if workspace_runtime_ready else 'No' }}</p>
+  <p><strong>Saved setting:</strong> {{ current_setting or 'Not configured' }}</p>
+</div>
+
+<div class="card">
+  <h3>Choose Workspace DB</h3>
+  <form method="post">
+    <label><input type="radio" name="mode" value="default" checked> Use default workspace DB</label>
+    <p style="margin:0.25rem 0 0.75rem; color:#475569;">{{ default_workspace_url }}</p>
+
+    <label><input type="radio" name="mode" value="custom"> Custom SQLite path</label>
+    <input type="text" name="custom_path" placeholder="workspace/custom.db or /absolute/path/workspace.db">
+
+    <label><input type="radio" name="mode" value="advanced"> Advanced SQLAlchemy URL</label>
+    <input type="text" name="raw_url" placeholder="sqlite:///instance/my_workspace.db">
+
+    <button type="submit">Save Workspace Setting</button>
+  </form>
+  <p style="margin-top:0.75rem;color:#334155;">Saved. Restart required to apply database connection.</p>
+</div>
+
+<div class="card">
+  <h3>Initialize Workspace DB</h3>
+  <p>Create workspace tables after the workspace database URL is configured and the app is restarted.</p>
+  <form method="post" action="{{ url_for('admin.initialize_workspace') }}">
+    <button type="submit">Initialize Workspace DB</button>
+  </form>
+</div>
+{% endblock %}

@@ -49,10 +49,17 @@
         <a href="{{ url_for('databases.projects_list') }}">Projects</a>
         <a href="{{ url_for('databases.companies_list') }}">Companies</a>
         {% if current_user.role == 'Admin' %}
-            <a href="{{ url_for('admin.users_list') }}">Admin</a>
+            <p style="margin:0.8rem 0 0.35rem;font-size:0.85rem;color:#64748b;font-weight:700;">Admin</p>
+            <a href="{{ url_for('admin.users_list') }}">Users</a>
+            <a href="{{ url_for('admin.storage') }}">Storage</a>
         {% endif %}
     </nav>
     <main>
+        {% if current_user.role == 'Admin' and not workspace_is_configured %}
+            <div class="flash info">
+                Workspace DB not configured. <a href="{{ url_for('admin.storage') }}">Configure now</a>.
+            </div>
+        {% endif %}
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}

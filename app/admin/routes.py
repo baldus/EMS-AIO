@@ -1,12 +1,21 @@
 from datetime import datetime
+from pathlib import Path
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app.admin import admin_bp
 from app.decorators import roles_required
 from app.extensions import db
-from app.models import AuditLog, ROLE_CHOICES, User
+from app.models import AuditLog, ROLE_CHOICES, User, get_setting, set_setting
+from app.workspace import (
+    WORKSPACE_SETTING_KEY,
+    clean_url,
+    default_workspace_url,
+    validate_workspace_url,
+    workspace_configured,
+    workspace_ready,
+)
 
 
 def _log_admin_action(action, entity_type, entity_id, metadata=None):
@@ -20,6 +29,28 @@ def _log_admin_action(action, entity_type, entity_id, metadata=None):
             ip_address=request.remote_addr,
         )
     )
+
+
+def _build_workspace_url_from_form() -> str | None:
+    mode = request.form.get("mode", "default")
+    if mode == "default":
+        return default_workspace_url(current_app.instance_path)
+
+    if mode == "custom":
+        custom_path = request.form.get("custom_path", "").strip()
+        if not custom_path:
+            return None
+
+        path_obj = Path(custom_path)
+        if path_obj.is_absolute():
+            return f"sqlite:///{path_obj}"
+
+        return f"sqlite:///{Path(current_app.instance_path) / path_obj}"
+
+    if mode == "advanced":
+        return clean_url(request.form.get("raw_url", ""))
+
+    return None
 
 
 @admin_bp.route("/users")
@@ -98,3 +129,51 @@ def user_edit(user_id):
             return redirect(url_for("admin.users_list"))
 
     return render_template("admin/user_form.html", roles=ROLE_CHOICES, user=user)
+
+
+@admin_bp.route("/storage", methods=["GET", "POST"])
+@login_required
+@roles_required("Admin")
+def storage():
+    current_setting = get_setting(WORKSPACE_SETTING_KEY)
+    default_url = default_workspace_url(current_app.instance_path)
+
+    if request.method == "POST":
+        candidate_url = _build_workspace_url_from_form()
+        valid, message = validate_workspace_url(candidate_url)
+        if not valid:
+            flash(message, "error")
+        else:
+            set_setting(WORKSPACE_SETTING_KEY, candidate_url)
+            _log_admin_action(
+                "workspace_db_updated",
+                "AppSetting",
+                WORKSPACE_SETTING_KEY,
+                {"workspace_database_url": candidate_url},
+            )
+            db.session.commit()
+            flash("Saved. Restart required to apply database connection.", "success")
+            return redirect(url_for("admin.storage"))
+
+    return render_template(
+        "admin/storage.html",
+        current_setting=current_setting,
+        default_workspace_url=default_url,
+        workspace_runtime_configured=workspace_configured(),
+        workspace_runtime_ready=workspace_ready(),
+    )
+
+
+@admin_bp.route("/storage/initialize", methods=["POST"])
+@login_required
+@roles_required("Admin")
+def initialize_workspace():
+    if not workspace_configured():
+        flash("Workspace DB is not configured. Save storage settings and restart first.", "error")
+        return redirect(url_for("admin.storage"))
+
+    db.create_all(bind_key="workspace")
+    _log_admin_action("workspace_db_initialized", "Workspace", "workspace", None)
+    db.session.commit()
+    flash("Workspace DB initialized.", "success")
+    return redirect(url_for("admin.storage"))
