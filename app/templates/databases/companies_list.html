@@ -8,12 +8,12 @@
 <div><label>Search<input type="text" name="q" value="{{ query.q }}"></label></div>
 <div><label>Status<select name="status"><option value="">Any</option>{% for s in statuses %}<option value="{{ s }}" {% if query.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label></div>
 <div><label>Sort<select name="sort"><option value="updated_at">Updated</option><option value="name" {% if query.sort=='name' %}selected{% endif %}>Name</option><option value="status" {% if query.sort=='status' %}selected{% endif %}>Status</option></select></label></div>
-<div><label>Direction<select name="direction"><option value="desc">Desc</option><option value="asc" {% if query.direction=='asc' %}selected{% endif %}>Asc</option></select></label></div>
+<div><label>Direction<select name="dir"><option value="desc">Desc</option><option value="asc" {% if query.dir=='asc' %}selected{% endif %}>Asc</option></select></label></div>
 <div><label><input type="checkbox" name="include_archived" value="1" {% if query.include_archived=='1' %}checked{% endif %}> Include archived</label></div>
 <button type="submit">Apply</button>
 </form>
 {% if current_user.role != 'Viewer' %}<a class="button-link" href="{{ url_for('databases.company_create') }}">New Company</a>{% endif %}
-<table><tr><th>Name</th><th>Status</th><th>Updated</th></tr>
+<table><tr><th><a href="{{ url_for('databases.companies_list', q=query.q, status=query.status, include_archived=query.include_archived, sort='name', dir='desc' if query.sort=='name' and query.dir=='asc' else 'asc') }}">Name</a></th><th><a href="{{ url_for('databases.companies_list', q=query.q, status=query.status, include_archived=query.include_archived, sort='status', dir='desc' if query.sort=='status' and query.dir=='asc' else 'asc') }}">Status</a></th><th><a href="{{ url_for('databases.companies_list', q=query.q, status=query.status, include_archived=query.include_archived, sort='updated_at', dir='desc' if query.sort=='updated_at' and query.dir=='asc' else 'asc') }}">Updated</a></th></tr>
 {% for company in companies %}
 <tr class="clickable" onclick="window.location='{{ url_for('databases.company_detail', company_id=company.id) }}'"><td>{{ company.name }}</td><td>{{ company.status }}</td><td>{{ company.updated_at }}</td></tr>
 {% else %}<tr><td colspan="3">No companies found.</td></tr>{% endfor %}
