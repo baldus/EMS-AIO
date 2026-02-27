@@ -292,3 +292,62 @@ Stability first. Clarity over cleverness. Foundations before features.
 - **Workspace configured but routes still unavailable:** run **Initialize Workspace DB** after restart to create workspace tables.
 - **SQLite path errors:** verify parent directory exists and is writable by the EMS process user.
 - **`sqlite3.OperationalError: unable to open database file`:** ensure `instance/` exists and is writable by the process user. EMS Home resolves CORE DB to an absolute SQLite URL under `instance/` to avoid relative-path startup failures.
+
+---
+
+## Ops Monitor Launch Contract (Hyperion Ops Console)
+
+The repository now includes a VM/headless-safe monitor launcher at `ops_monitor/launcher.py` and a startup wrapper `start_operations_console.sh`.
+
+### Launch modes
+`OPS_MONITOR_LAUNCH_MODE` supports:
+- `window`
+- `tmux`
+- `headless`
+- `background` (alias behavior to headless process spawn)
+
+### Precedence
+Launch mode selection follows:
+1. CLI flag `--launch-mode`
+2. `OPS_MONITOR_LAUNCH_MODE`
+3. Auto-detection default
+
+Auto-detection default:
+- If `DISPLAY` is empty OR `XDG_SESSION_TYPE` is empty OR `TERM=dumb`: use `tmux` (preferred), else `headless` when tmux is missing.
+- Otherwise: `window`.
+
+### Window fallback behavior
+If `window` mode is requested (explicitly or by default) but no supported terminal app is available (`gnome-terminal`, `xterm`, `konsole`, `xfce4-terminal`), launcher automatically falls back to `tmux`, then `headless`.
+
+### Log path contract
+Launcher always attempts to create and write a log before launching, so failures are self-diagnosing.
+
+Candidate paths (in order):
+1. `MONITOR_LOG_FILE` (if set)
+2. `/var/log/hyperion/terminal_monitor.log`
+3. `support/hyperion_terminal_monitor.log` (repo-relative, absolute resolution)
+4. `/tmp/hyperion_terminal_monitor.log`
+
+When launcher fails, user-facing output includes the exact resolved log path.
+
+### Environment variables
+- `OPS_MONITOR_LAUNCH_MODE`: launch mode override
+- `OPS_MONITOR_TERMINAL`: preferred terminal binary for window mode
+- `MONITOR_LOG_FILE`: full monitor log path override
+- `PYTHON`: interpreter override used by launcher and startup script
+- `ENABLE_OPS_MONITOR`: set `1` to enable monitor from `start_operations_console.sh`
+
+### Common failure modes and fixes
+- `no DISPLAY` / SSH / VM without GUI: allow auto mode (`tmux`/`headless`) or set `OPS_MONITOR_LAUNCH_MODE=tmux`.
+- `TERM=dumb`: same as headless condition; use `tmux` or `headless`.
+- missing tmux: install with `sudo apt-get install -y tmux` (launcher prints this hint).
+- missing `gnome-terminal`/`xterm`: launcher logs reason and falls back automatically.
+
+### Verification checklist
+- Desktop: run `./start_operations_console.sh` and confirm `window` mode launches.
+- VM/headless: run `./start_operations_console.sh` and confirm `tmux` or headless starts without hard-failing app startup.
+- Force headless: `OPS_MONITOR_LAUNCH_MODE=headless ./start_operations_console.sh`.
+- Force failure path: verify printed log file path exists and contains the exception/stderr details.
+
+### Notes on README extension
+The README previously did not define an Ops Monitor launch contract or monitor log fallback behavior. This section adds that explicit contract and troubleshooting guidance so future operations prompts can rely on a stable behavior definition.
