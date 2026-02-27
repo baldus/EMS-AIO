@@ -27,4 +27,5 @@ if [[ "${ENABLE_OPS_MONITOR:-1}" == "1" ]]; then
   fi
 fi
 
-exec "$APP_PYTHON" run.py
+# Reuse the primary startup flow so env validation/venv dependency bootstrap stay consistent.
+exec "$SCRIPT_DIR/start_ems_home.sh"

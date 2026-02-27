@@ -297,7 +297,7 @@ Stability first. Clarity over cleverness. Foundations before features.
 
 ## Ops Monitor Launch Contract (Hyperion Ops Console)
 
-The repository now includes a VM/headless-safe monitor launcher at `ops_monitor/launcher.py` and a startup wrapper `start_operations_console.sh`.
+The repository now includes a VM/headless-safe monitor launcher at `ops_monitor/launcher.py` and a startup wrapper `start_operations_console.sh` that then hands off to `start_ems_home.sh` for the normal dependency/bootstrap flow.
 
 ### Launch modes
 `OPS_MONITOR_LAUNCH_MODE` supports:
@@ -334,7 +334,7 @@ When launcher fails, user-facing output includes the exact resolved log path.
 - `OPS_MONITOR_LAUNCH_MODE`: launch mode override
 - `OPS_MONITOR_TERMINAL`: preferred terminal binary for window mode
 - `MONITOR_LOG_FILE`: full monitor log path override
-- `PYTHON`: interpreter override used by launcher and startup script
+- `PYTHON`: interpreter override used by launcher/start wrapper when `.venv` is absent
 - `ENABLE_OPS_MONITOR`: set `1` to enable monitor from `start_operations_console.sh`
 
 ### Common failure modes and fixes
