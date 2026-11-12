@@ -3,3 +3,17 @@ __pycache__/
 .env
 .venv/
 instance/
+
+# --- EMS platform (TypeScript monorepo) ---
+node_modules/
+dist/
+.next/
+.turbo/
+coverage/
+*.tsbuildinfo
+.env.local
+apps/*/.env
+packages/*/.env
+infra/.env
+.DS_Store
+packages/api-client/src/generated/

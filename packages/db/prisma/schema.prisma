@@ -1,0 +1,1515 @@
+// EMS platform data model.
+//
+// Conventions (see docs/architecture/data-model.md):
+// - Tables/columns are snake_case; Prisma models/fields are PascalCase/camelCase.
+// - Primary keys are UUIDs generated in PostgreSQL (gen_random_uuid()).
+// - All timestamps are timestamptz (UTC). Calendar dates use `date`.
+// - Money is integer minor units (cents) in BIGINT with an ISO-4217 currency code.
+// - Mutable business records carry `version` for optimistic concurrency.
+// - Append-only tables (audit_events, approvals, document_revisions) and approved baselines are
+//   protected by database triggers defined in migration 0002_integrity_guards.
+// - Constraints Prisma cannot express (CHECKs, partial unique indexes, triggers) live in raw SQL
+//   migrations and are documented beside the model.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------------------------
+
+enum OrganizationKind {
+  ems_operator
+  customer
+  prospect
+  partner
+  vendor
+}
+
+enum OrganizationStatus {
+  active
+  inactive
+  archived
+}
+
+enum OrganizationSegment {
+  manufacturer
+  custom_machine_builder
+  robotics_integrator
+  automation_company
+  oem
+  other
+}
+
+enum UserType {
+  internal
+  customer
+  service
+}
+
+enum UserStatus {
+  invited
+  active
+  suspended
+  deactivated
+}
+
+enum RoleScope {
+  global
+  organization
+  project
+}
+
+enum ContactStatus {
+  active
+  inactive
+  left_company
+}
+
+enum OpportunityStage {
+  lead
+  qualified
+  discovery
+  proposal
+  negotiation
+  won
+  lost
+  abandoned
+}
+
+enum CommercialModel {
+  fixed_price_package
+  monthly_retainer
+  milestone_based
+  time_and_materials
+}
+
+enum ActivityKind {
+  note
+  call
+  email
+  meeting
+  site_visit
+  task
+}
+
+enum ProposalStatus {
+  draft
+  internal_review
+  approved_for_release
+  sent
+  accepted
+  rejected
+  expired
+  withdrawn
+}
+
+enum ContractType {
+  msa
+  sow
+  purchase_order
+  change_order
+  nda
+}
+
+enum ContractStatus {
+  draft
+  internal_review
+  out_for_signature
+  executed
+  active
+  expired
+  terminated
+  superseded
+}
+
+enum EngagementStatus {
+  planned
+  active
+  on_hold
+  completed
+  terminated
+}
+
+enum ProjectStatus {
+  proposed
+  active
+  on_hold
+  completed
+  cancelled
+}
+
+enum MilestoneStatus {
+  planned
+  in_progress
+  achieved
+  missed
+  cancelled
+}
+
+enum TaskStatus {
+  backlog
+  ready
+  in_progress
+  blocked
+  done
+  cancelled
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+  critical
+}
+
+enum DependencyType {
+  finish_to_start
+  start_to_start
+  finish_to_finish
+  start_to_finish
+}
+
+enum RiskStatus {
+  identified
+  assessed
+  mitigating
+  accepted
+  closed
+  realized
+}
+
+enum RiskResponse {
+  avoid
+  mitigate
+  transfer
+  accept
+}
+
+enum IssueSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum IssueStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum DecisionStatus {
+  proposed
+  decided
+  superseded
+}
+
+enum GateStatus {
+  not_started
+  in_preparation
+  ready_for_review
+  approved
+  conditionally_approved
+  rejected
+}
+
+enum GateRequirementType {
+  deliverable
+  document
+  approval
+  checklist
+  evidence
+}
+
+enum GateRequirementStatus {
+  open
+  satisfied
+  waived
+  not_applicable
+}
+
+enum ApprovalDecision {
+  approved
+  approved_with_conditions
+  rejected
+  revoked
+}
+
+enum ChangeRequestStatus {
+  draft
+  submitted
+  under_review
+  approved
+  rejected
+  withdrawn
+  implemented
+}
+
+enum BaselineKind {
+  scope
+  schedule
+  cost
+  integrated
+}
+
+enum BaselineStatus {
+  draft
+  submitted
+  approved
+  rejected
+  superseded
+}
+
+enum DeliverableStatus {
+  planned
+  in_progress
+  submitted
+  accepted
+  rejected
+}
+
+enum DocumentType {
+  proposal
+  contract
+  statement_of_work
+  change_request
+  gate_package
+  meeting_notes
+  deliverable
+  invoice
+  evidence
+  report
+  other
+}
+
+enum DataClassification {
+  public
+  internal
+  confidential
+  restricted
+}
+
+enum TimeEntryStatus {
+  draft
+  submitted
+  approved
+  rejected
+  invoiced
+}
+
+enum InvoiceStatus {
+  draft
+  internal_review
+  approved_for_release
+  sent
+  partially_paid
+  paid
+  void
+  disputed
+}
+
+enum InvoiceLineType {
+  retainer
+  fixed_fee
+  milestone
+  hours
+  expense
+  adjustment
+}
+
+enum PaymentMethod {
+  ach
+  wire
+  check
+  card
+  other
+}
+
+enum PaymentStatus {
+  recorded
+  verified
+  reversed
+}
+
+enum ActorType {
+  user
+  agent
+  system
+  workflow
+}
+
+enum AgentRunStatus {
+  queued
+  running
+  awaiting_approval
+  succeeded
+  failed
+  cancelled
+}
+
+enum AgentActionStatus {
+  executed
+  proposed
+  approved
+  rejected
+  applied
+  failed
+  denied
+  expired
+}
+
+enum NotificationChannel {
+  in_app
+  email
+}
+
+enum IntegrationStatus {
+  disabled
+  configured
+  active
+  error
+}
+
+// ---------------------------------------------------------------------------------------------
+// Identity, tenancy, and access control
+// ---------------------------------------------------------------------------------------------
+
+/// A company. Every organization is its own tenant boundary. Exactly one row has kind ems_operator.
+model Organization {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String               @db.VarChar(200)
+  legalName    String?              @map("legal_name") @db.VarChar(300)
+  kind         OrganizationKind
+  status       OrganizationStatus   @default(active)
+  segment      OrganizationSegment?
+  industry     String?              @db.VarChar(120)
+  website      String?              @db.VarChar(300)
+  phone        String?              @db.VarChar(50)
+  addressLine1 String?              @map("address_line1") @db.VarChar(200)
+  addressLine2 String?              @map("address_line2") @db.VarChar(200)
+  city         String?              @db.VarChar(120)
+  region       String?              @db.VarChar(120)
+  postalCode   String?              @map("postal_code") @db.VarChar(20)
+  countryCode  String?              @map("country_code") @db.Char(2)
+  notes        String?
+  /// EMS user accountable for the relationship.
+  ownerUserId  String?              @map("owner_user_id") @db.Uuid
+  createdById  String?              @map("created_by_id") @db.Uuid
+  updatedById  String?              @map("updated_by_id") @db.Uuid
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt   DateTime?            @map("archived_at") @db.Timestamptz(3)
+  version      Int                  @default(1)
+
+  owner           User?            @relation("OrganizationOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  members         User[]           @relation("UserHomeOrganization")
+  roleAssignments RoleAssignment[]
+  contacts        Contact[]
+  opportunities   Opportunity[]
+  activities      Activity[]
+  proposals       Proposal[]
+  contracts       Contract[]
+  engagements     Engagement[]
+  projects        Project[]
+  documents       Document[]
+  invoices        Invoice[]
+  payments        Payment[]
+  agentRuns       AgentRun[]
+  integrations    Integration[]
+
+  @@index([kind, status])
+  @@index([name])
+  @@index([ownerUserId])
+  @@map("organizations")
+}
+
+/// A human or service identity. Authentication is delegated to the OIDC provider; this table holds
+/// the platform-side identity, tenancy, and status. Users are never hard-deleted.
+model User {
+  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email              String     @db.VarChar(320)
+  displayName        String     @map("display_name") @db.VarChar(200)
+  userType           UserType   @map("user_type")
+  status             UserStatus @default(invited)
+  homeOrganizationId String     @map("home_organization_id") @db.Uuid
+  oidcIssuer         String?    @map("oidc_issuer") @db.VarChar(500)
+  oidcSubject        String?    @map("oidc_subject") @db.VarChar(255)
+  lastLoginAt        DateTime?  @map("last_login_at") @db.Timestamptz(3)
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version            Int        @default(1)
+
+  homeOrganization   Organization     @relation("UserHomeOrganization", fields: [homeOrganizationId], references: [id], onDelete: Restrict)
+  ownedOrganizations Organization[]   @relation("OrganizationOwner")
+  roleAssignments    RoleAssignment[] @relation("RoleAssignee")
+  grantedAssignments RoleAssignment[] @relation("RoleGrantor")
+  projectMemberships ProjectMember[]  @relation("ProjectMemberUser")
+  notifications      Notification[]
+  timeEntries        TimeEntry[]      @relation("TimeEntryUser")
+  approvals          Approval[]       @relation("Approver")
+
+  // Unique (lower(email)) is enforced by a functional index in raw SQL.
+  @@unique([oidcIssuer, oidcSubject])
+  @@index([homeOrganizationId])
+  @@map("users")
+}
+
+model Role {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key          String     @unique @db.VarChar(80)
+  name         String     @db.VarChar(120)
+  description  String?
+  scope        RoleScope
+  /// Which user types may hold the role (subset of UserType values).
+  assignableTo UserType[] @map("assignable_to")
+  mfaRequired  Boolean    @default(false) @map("mfa_required")
+  isSystem     Boolean    @default(false) @map("is_system")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  permissions    RolePermission[]
+  assignments    RoleAssignment[]
+  projectMembers ProjectMember[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String  @unique @db.VarChar(80)
+  description String
+  privileged  Boolean @default(false)
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+/// Global (organization_id NULL) or organization-scoped role grants. Revocation sets revoked_at;
+/// rows are kept for history. One active assignment per (user, role, scope) via partial unique index.
+model RoleAssignment {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  roleId         String    @map("role_id") @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  grantedById    String?   @map("granted_by_id") @db.Uuid
+  grantedAt      DateTime  @default(now()) @map("granted_at") @db.Timestamptz(3)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revokedById    String?   @map("revoked_by_id") @db.Uuid
+
+  user         User          @relation("RoleAssignee", fields: [userId], references: [id], onDelete: Restrict)
+  role         Role          @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  grantedBy    User?         @relation("RoleGrantor", fields: [grantedById], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@map("role_assignments")
+}
+
+// ---------------------------------------------------------------------------------------------
+// CRM and business development
+// ---------------------------------------------------------------------------------------------
+
+model Contact {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  firstName      String        @map("first_name") @db.VarChar(100)
+  lastName       String        @map("last_name") @db.VarChar(100)
+  email          String?       @db.VarChar(320)
+  phone          String?       @db.VarChar(50)
+  jobTitle       String?       @map("job_title") @db.VarChar(150)
+  status         ContactStatus @default(active)
+  isPrimary      Boolean       @default(false) @map("is_primary")
+  /// Outreach must not be prepared for contacts flagged do-not-contact.
+  doNotContact   Boolean       @default(false) @map("do_not_contact")
+  /// The user record for this person if they have platform access.
+  userId         String?       @unique @map("user_id") @db.Uuid
+  notes          String?
+  createdById    String?       @map("created_by_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version        Int           @default(1)
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  opportunities Opportunity[]
+  activities    Activity[]
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("contacts")
+}
+
+model Opportunity {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String           @map("organization_id") @db.Uuid
+  name                String           @db.VarChar(200)
+  stage               OpportunityStage @default(lead)
+  commercialModel     CommercialModel? @map("commercial_model")
+  estimatedValueCents BigInt?          @map("estimated_value_cents")
+  currency            String           @default("USD") @db.Char(3)
+  /// 0-100, CHECK constrained.
+  probabilityPct      Int?             @map("probability_pct")
+  expectedCloseDate   DateTime?        @map("expected_close_date") @db.Date
+  ownerUserId         String?          @map("owner_user_id") @db.Uuid
+  primaryContactId    String?          @map("primary_contact_id") @db.Uuid
+  source              String?          @db.VarChar(120)
+  lostReason          String?          @map("lost_reason")
+  createdById         String?          @map("created_by_id") @db.Uuid
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  closedAt            DateTime?        @map("closed_at") @db.Timestamptz(3)
+  version             Int              @default(1)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  primaryContact Contact?     @relation(fields: [primaryContactId], references: [id], onDelete: SetNull)
+  activities     Activity[]
+  proposals      Proposal[]
+  contracts      Contract[]
+
+  @@index([organizationId])
+  @@index([stage])
+  @@index([ownerUserId])
+  @@map("opportunities")
+}
+
+model Activity {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  opportunityId  String?      @map("opportunity_id") @db.Uuid
+  contactId      String?      @map("contact_id") @db.Uuid
+  projectId      String?      @map("project_id") @db.Uuid
+  kind           ActivityKind
+  subject        String       @db.VarChar(300)
+  body           String?
+  occurredAt     DateTime     @map("occurred_at") @db.Timestamptz(3)
+  actorType      ActorType    @default(user) @map("actor_type")
+  actorUserId    String?      @map("actor_user_id") @db.Uuid
+  agentRunId     String?      @map("agent_run_id") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  opportunity  Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  contact      Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  agentRun     AgentRun?    @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, occurredAt])
+  @@index([opportunityId])
+  @@index([projectId])
+  @@map("activities")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sales, proposals, contracts
+// ---------------------------------------------------------------------------------------------
+
+model Proposal {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String          @map("organization_id") @db.Uuid
+  opportunityId   String?         @map("opportunity_id") @db.Uuid
+  number          String          @unique @db.VarChar(40)
+  title           String          @db.VarChar(300)
+  status          ProposalStatus  @default(draft)
+  commercialModel CommercialModel @map("commercial_model")
+  totalCents      BigInt?         @map("total_cents")
+  currency        String          @default("USD") @db.Char(3)
+  validUntil      DateTime?       @map("valid_until") @db.Date
+  /// The proposal document; each revision is immutable and approvals link to a revision.
+  documentId      String?         @unique @map("document_id") @db.Uuid
+  createdById     String?         @map("created_by_id") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version         Int             @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  opportunity  Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  document     Document?    @relation("ProposalDocument", fields: [documentId], references: [id], onDelete: Restrict)
+  contracts    Contract[]
+
+  @@index([organizationId])
+  @@index([opportunityId])
+  @@map("proposals")
+}
+
+model Contract {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String           @map("organization_id") @db.Uuid
+  opportunityId    String?          @map("opportunity_id") @db.Uuid
+  proposalId       String?          @map("proposal_id") @db.Uuid
+  /// SOWs/change orders reference their governing MSA.
+  parentContractId String?          @map("parent_contract_id") @db.Uuid
+  number           String           @unique @db.VarChar(40)
+  title            String           @db.VarChar(300)
+  contractType     ContractType     @map("contract_type")
+  commercialModel  CommercialModel? @map("commercial_model")
+  status           ContractStatus   @default(draft)
+  valueCents       BigInt?          @map("value_cents")
+  currency         String           @default("USD") @db.Char(3)
+  customerPoNumber String?          @map("customer_po_number") @db.VarChar(80)
+  effectiveDate    DateTime?        @map("effective_date") @db.Date
+  endDate          DateTime?        @map("end_date") @db.Date
+  documentId       String?          @unique @map("document_id") @db.Uuid
+  /// Set only by the contract-execution workflow once both party approvals exist.
+  executedAt       DateTime?        @map("executed_at") @db.Timestamptz(3)
+  createdById      String?          @map("created_by_id") @db.Uuid
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version          Int              @default(1)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  proposal       Proposal?    @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  parentContract Contract?    @relation("ContractHierarchy", fields: [parentContractId], references: [id], onDelete: Restrict)
+  childContracts Contract[]   @relation("ContractHierarchy")
+  document       Document?    @relation("ContractDocument", fields: [documentId], references: [id], onDelete: Restrict)
+  engagements    Engagement[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("contracts")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Engagements (EMS's paid service) vs projects (the customer's equipment project)
+// ---------------------------------------------------------------------------------------------
+
+/// An EMS service engagement under a contract. NOT the customer's equipment project; an engagement
+/// may end while the equipment project continues, and a project may span several engagements.
+model Engagement {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String           @map("organization_id") @db.Uuid
+  contractId          String?          @map("contract_id") @db.Uuid
+  name                String           @db.VarChar(200)
+  commercialModel     CommercialModel  @map("commercial_model")
+  status              EngagementStatus @default(planned)
+  startDate           DateTime?        @map("start_date") @db.Date
+  endDate             DateTime?        @map("end_date") @db.Date
+  /// Typical fractional allocation, e.g. 10-20 hours/week.
+  weeklyHoursTarget   Decimal?         @map("weekly_hours_target") @db.Decimal(5, 2)
+  monthlyFeeCents     BigInt?          @map("monthly_fee_cents")
+  hourlyRateCents     BigInt?          @map("hourly_rate_cents")
+  fixedFeeCents       BigInt?          @map("fixed_fee_cents")
+  budgetHours         Decimal?         @map("budget_hours") @db.Decimal(8, 2)
+  currency            String           @default("USD") @db.Char(3)
+  engagementManagerId String?          @map("engagement_manager_id") @db.Uuid
+  createdById         String?          @map("created_by_id") @db.Uuid
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version             Int              @default(1)
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contract       Contract?           @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  projects       EngagementProject[]
+  milestones     Milestone[]
+  changeRequests ChangeRequest[]
+  timeEntries    TimeEntry[]
+  invoices       Invoice[]
+  documents      Document[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("engagements")
+}
+
+model Project {
+  id                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String        @map("organization_id") @db.Uuid
+  code                 String        @unique @db.VarChar(40)
+  name                 String        @db.VarChar(200)
+  description          String?
+  status               ProjectStatus @default(proposed)
+  equipmentType        String?       @map("equipment_type") @db.VarChar(150)
+  siteLocation         String?       @map("site_location") @db.VarChar(200)
+  customerReference    String?       @map("customer_reference") @db.VarChar(100)
+  startDate            DateTime?     @map("start_date") @db.Date
+  targetCompletionDate DateTime?     @map("target_completion_date") @db.Date
+  createdById          String?       @map("created_by_id") @db.Uuid
+  createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version              Int           @default(1)
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  engagements    EngagementProject[]
+  members        ProjectMember[]
+  milestones     Milestone[]
+  tasks          Task[]
+  risks          Risk[]
+  issues         Issue[]
+  decisions      Decision[]
+  gates          Gate[]
+  changeRequests ChangeRequest[]
+  baselines      Baseline[]
+  deliverables   Deliverable[]
+  documents      Document[]
+  timeEntries    TimeEntry[]
+  activities     Activity[]
+  agentRuns      AgentRun[]
+
+  // (id, organization_id) is unique so child tables can enforce tenant consistency if needed.
+  @@unique([id, organizationId])
+  @@index([organizationId, status])
+  @@map("projects")
+}
+
+model EngagementProject {
+  engagementId String   @map("engagement_id") @db.Uuid
+  projectId    String   @map("project_id") @db.Uuid
+  scopeNotes   String?  @map("scope_notes")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  engagement Engagement @relation(fields: [engagementId], references: [id], onDelete: Restrict)
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@id([engagementId, projectId])
+  @@index([projectId])
+  @@map("engagement_projects")
+}
+
+/// Project-scoped role grant. One active membership per (project, user) via partial unique index.
+model ProjectMember {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId   String    @map("project_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  roleId      String    @map("role_id") @db.Uuid
+  addedById   String?   @map("added_by_id") @db.Uuid
+  addedAt     DateTime  @default(now()) @map("added_at") @db.Timestamptz(3)
+  removedAt   DateTime? @map("removed_at") @db.Timestamptz(3)
+  removedById String?   @map("removed_by_id") @db.Uuid
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  user    User    @relation("ProjectMemberUser", fields: [userId], references: [id], onDelete: Restrict)
+  role    Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([projectId])
+  @@map("project_members")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Scheduling
+// ---------------------------------------------------------------------------------------------
+
+model Milestone {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId    String          @map("project_id") @db.Uuid
+  engagementId String?         @map("engagement_id") @db.Uuid
+  gateId       String?         @map("gate_id") @db.Uuid
+  name         String          @db.VarChar(200)
+  description  String?
+  status       MilestoneStatus @default(planned)
+  plannedDate  DateTime?       @map("planned_date") @db.Date
+  forecastDate DateTime?       @map("forecast_date") @db.Date
+  actualDate   DateTime?       @map("actual_date") @db.Date
+  /// A billable milestone produces an invoice line when achieved and accepted.
+  isBillable   Boolean         @default(false) @map("is_billable")
+  amountCents  BigInt?         @map("amount_cents")
+  sortOrder    Int             @default(0) @map("sort_order")
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version      Int             @default(1)
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  engagement   Engagement?   @relation(fields: [engagementId], references: [id], onDelete: Restrict)
+  gate         Gate?         @relation(fields: [gateId], references: [id], onDelete: SetNull)
+  tasks        Task[]
+  deliverables Deliverable[]
+  invoiceLines InvoiceLine[]
+
+  @@index([projectId, plannedDate])
+  @@map("milestones")
+}
+
+model Task {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId       String       @map("project_id") @db.Uuid
+  milestoneId     String?      @map("milestone_id") @db.Uuid
+  parentTaskId    String?      @map("parent_task_id") @db.Uuid
+  wbsCode         String?      @map("wbs_code") @db.VarChar(40)
+  title           String       @db.VarChar(300)
+  description     String?
+  status          TaskStatus   @default(backlog)
+  priority        TaskPriority @default(medium)
+  assigneeUserId  String?      @map("assignee_user_id") @db.Uuid
+  plannedStart    DateTime?    @map("planned_start") @db.Date
+  plannedFinish   DateTime?    @map("planned_finish") @db.Date
+  actualStart     DateTime?    @map("actual_start") @db.Date
+  actualFinish    DateTime?    @map("actual_finish") @db.Date
+  estimateHours   Decimal?     @map("estimate_hours") @db.Decimal(8, 2)
+  percentComplete Int          @default(0) @map("percent_complete")
+  createdById     String?      @map("created_by_id") @db.Uuid
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version         Int          @default(1)
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  milestone    Milestone?   @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  parentTask   Task?        @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: Restrict)
+  subtasks     Task[]       @relation("TaskHierarchy")
+  predecessors Dependency[] @relation("DependencySuccessor")
+  successors   Dependency[] @relation("DependencyPredecessor")
+  timeEntries  TimeEntry[]
+
+  @@index([projectId, status])
+  @@index([assigneeUserId])
+  @@index([milestoneId])
+  @@map("tasks")
+}
+
+/// Task dependency edge. CHECK prevents self-dependency; cycle detection is enforced in the service.
+model Dependency {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  predecessorTaskId String         @map("predecessor_task_id") @db.Uuid
+  successorTaskId   String         @map("successor_task_id") @db.Uuid
+  type              DependencyType @default(finish_to_start)
+  lagDays           Int            @default(0) @map("lag_days")
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  predecessor Task @relation("DependencyPredecessor", fields: [predecessorTaskId], references: [id], onDelete: Cascade)
+  successor   Task @relation("DependencySuccessor", fields: [successorTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([predecessorTaskId, successorTaskId])
+  @@index([successorTaskId])
+  @@map("dependencies")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Risk, issue, decision, and change management
+// ---------------------------------------------------------------------------------------------
+
+model Risk {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId          String        @map("project_id") @db.Uuid
+  code               String        @db.VarChar(20)
+  title              String        @db.VarChar(300)
+  description        String?
+  category           String?       @db.VarChar(80)
+  /// 1-5, CHECK constrained. Score = probability * impact (computed in domain).
+  probability        Int
+  impact             Int
+  status             RiskStatus    @default(identified)
+  response           RiskResponse?
+  mitigationPlan     String?       @map("mitigation_plan")
+  triggerDescription String?       @map("trigger_description")
+  ownerUserId        String?       @map("owner_user_id") @db.Uuid
+  dueDate            DateTime?     @map("due_date") @db.Date
+  createdById        String?       @map("created_by_id") @db.Uuid
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  closedAt           DateTime?     @map("closed_at") @db.Timestamptz(3)
+  version            Int           @default(1)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  issues  Issue[]
+
+  @@unique([projectId, code])
+  @@index([projectId, status])
+  @@map("risks")
+}
+
+model Issue {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId   String        @map("project_id") @db.Uuid
+  riskId      String?       @map("risk_id") @db.Uuid
+  code        String        @db.VarChar(20)
+  title       String        @db.VarChar(300)
+  description String?
+  severity    IssueSeverity @default(medium)
+  status      IssueStatus   @default(open)
+  ownerUserId String?       @map("owner_user_id") @db.Uuid
+  raisedById  String?       @map("raised_by_id") @db.Uuid
+  dueDate     DateTime?     @map("due_date") @db.Date
+  resolution  String?
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  resolvedAt  DateTime?     @map("resolved_at") @db.Timestamptz(3)
+  version     Int           @default(1)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  risk    Risk?   @relation(fields: [riskId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, code])
+  @@index([projectId, status])
+  @@map("issues")
+}
+
+model Decision {
+  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId            String         @map("project_id") @db.Uuid
+  changeRequestId      String?        @map("change_request_id") @db.Uuid
+  supersedesDecisionId String?        @unique @map("supersedes_decision_id") @db.Uuid
+  title                String         @db.VarChar(300)
+  context              String?
+  decision             String
+  rationale            String?
+  status               DecisionStatus @default(proposed)
+  decidedById          String?        @map("decided_by_id") @db.Uuid
+  decidedAt            DateTime?      @map("decided_at") @db.Timestamptz(3)
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  changeRequest ChangeRequest? @relation(fields: [changeRequestId], references: [id], onDelete: SetNull)
+  supersedes    Decision?      @relation("DecisionSupersession", fields: [supersedesDecisionId], references: [id], onDelete: Restrict)
+  supersededBy  Decision?      @relation("DecisionSupersession")
+
+  @@index([projectId])
+  @@map("decisions")
+}
+
+model ChangeRequest {
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId            String              @map("project_id") @db.Uuid
+  engagementId         String?             @map("engagement_id") @db.Uuid
+  number               String              @db.VarChar(20)
+  title                String              @db.VarChar(300)
+  description          String?
+  reason               String?
+  status               ChangeRequestStatus @default(draft)
+  costImpactCents      BigInt?             @map("cost_impact_cents")
+  currency             String              @default("USD") @db.Char(3)
+  scheduleImpactDays   Int?                @map("schedule_impact_days")
+  scopeImpact          String?             @map("scope_impact")
+  requestedByUserId    String?             @map("requested_by_user_id") @db.Uuid
+  requestedByContactId String?             @map("requested_by_contact_id") @db.Uuid
+  /// Change request form; approvals reference a specific revision of this document.
+  documentId           String?             @unique @map("document_id") @db.Uuid
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version              Int                 @default(1)
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  engagement Engagement? @relation(fields: [engagementId], references: [id], onDelete: Restrict)
+  document   Document?   @relation("ChangeRequestDocument", fields: [documentId], references: [id], onDelete: Restrict)
+  decisions  Decision[]
+  baselines  Baseline[]
+
+  @@unique([projectId, number])
+  @@index([projectId, status])
+  @@map("change_requests")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Stage gates, baselines, deliverables, approvals
+// ---------------------------------------------------------------------------------------------
+
+model Gate {
+  id                    String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId             String     @map("project_id") @db.Uuid
+  code                  String     @db.VarChar(20)
+  name                  String     @db.VarChar(200)
+  description           String?
+  sequence              Int
+  status                GateStatus @default(not_started)
+  /// 1-3, CHECK constrained: the minimum approval level required to pass this gate.
+  requiredApprovalLevel Int        @map("required_approval_level")
+  plannedDate           DateTime?  @map("planned_date") @db.Date
+  /// Gate package document; approvals reference a revision of it.
+  packageDocumentId     String?    @unique @map("package_document_id") @db.Uuid
+  baselineId            String?    @map("baseline_id") @db.Uuid
+  decidedAt             DateTime?  @map("decided_at") @db.Timestamptz(3)
+  createdAt             DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version               Int        @default(1)
+
+  project         Project           @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  packageDocument Document?         @relation("GatePackageDocument", fields: [packageDocumentId], references: [id], onDelete: Restrict)
+  baseline        Baseline?         @relation(fields: [baselineId], references: [id], onDelete: Restrict)
+  requirements    GateRequirement[]
+  milestones      Milestone[]
+
+  @@unique([projectId, sequence])
+  @@unique([projectId, code])
+  @@map("gates")
+}
+
+model GateRequirement {
+  id                         String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gateId                     String                @map("gate_id") @db.Uuid
+  title                      String                @db.VarChar(300)
+  description                String?
+  requirementType            GateRequirementType   @map("requirement_type")
+  isMandatory                Boolean               @default(true) @map("is_mandatory")
+  status                     GateRequirementStatus @default(open)
+  deliverableId              String?               @map("deliverable_id") @db.Uuid
+  evidenceDocumentRevisionId String?               @map("evidence_document_revision_id") @db.Uuid
+  verifiedById               String?               @map("verified_by_id") @db.Uuid
+  verifiedAt                 DateTime?             @map("verified_at") @db.Timestamptz(3)
+  /// A mandatory requirement can only be waived through an approval record.
+  waiverApprovalId           String?               @map("waiver_approval_id") @db.Uuid
+  sortOrder                  Int                   @default(0) @map("sort_order")
+  createdAt                  DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                  DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  gate             Gate              @relation(fields: [gateId], references: [id], onDelete: Restrict)
+  deliverable      Deliverable?      @relation(fields: [deliverableId], references: [id], onDelete: Restrict)
+  evidenceRevision DocumentRevision? @relation(fields: [evidenceDocumentRevisionId], references: [id], onDelete: Restrict)
+  waiverApproval   Approval?         @relation(fields: [waiverApprovalId], references: [id], onDelete: Restrict)
+
+  @@index([gateId])
+  @@map("gate_requirements")
+}
+
+/// Versioned, frozen snapshot of scope/schedule/cost. Approved baselines are immutable (trigger);
+/// changes create a new revision via an approved change request.
+model Baseline {
+  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId            String         @map("project_id") @db.Uuid
+  kind                 BaselineKind
+  revision             Int
+  status               BaselineStatus @default(draft)
+  /// Frozen JSON snapshot of the baselined data.
+  snapshot             Json
+  /// SHA-256 over the canonical JSON snapshot; approvals bind to this.
+  contentSha256        String         @map("content_sha256") @db.Char(64)
+  changeRequestId      String?        @map("change_request_id") @db.Uuid
+  supersedesBaselineId String?        @unique @map("supersedes_baseline_id") @db.Uuid
+  createdById          String?        @map("created_by_id") @db.Uuid
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  approvedAt           DateTime?      @map("approved_at") @db.Timestamptz(3)
+
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  changeRequest ChangeRequest? @relation(fields: [changeRequestId], references: [id], onDelete: Restrict)
+  supersedes    Baseline?      @relation("BaselineSupersession", fields: [supersedesBaselineId], references: [id], onDelete: Restrict)
+  supersededBy  Baseline?      @relation("BaselineSupersession")
+  approvals     Approval[]
+  gates         Gate[]
+
+  @@unique([projectId, kind, revision])
+  @@map("baselines")
+}
+
+model Deliverable {
+  id                   String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId            String            @map("project_id") @db.Uuid
+  milestoneId          String?           @map("milestone_id") @db.Uuid
+  name                 String            @db.VarChar(300)
+  description          String?
+  deliverableType      String?           @map("deliverable_type") @db.VarChar(80)
+  status               DeliverableStatus @default(planned)
+  dueDate              DateTime?         @map("due_date") @db.Date
+  documentId           String?           @unique @map("document_id") @db.Uuid
+  acceptanceApprovalId String?           @unique @map("acceptance_approval_id") @db.Uuid
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version              Int               @default(1)
+
+  project            Project           @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  milestone          Milestone?        @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  document           Document?         @relation("DeliverableDocument", fields: [documentId], references: [id], onDelete: Restrict)
+  acceptanceApproval Approval?         @relation("DeliverableAcceptance", fields: [acceptanceApprovalId], references: [id], onDelete: Restrict)
+  gateRequirements   GateRequirement[]
+
+  @@index([projectId, status])
+  @@map("deliverables")
+}
+
+/// Immutable approval decision bound to an exact document revision or baseline and its content
+/// hash. Never updated or deleted (trigger). Revocation is a new row with decision = revoked.
+/// decided_at is always assigned by the database clock (trigger) to prevent backdating.
+model Approval {
+  id                         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  purpose                    String           @db.VarChar(60)
+  /// 1-3, CHECK constrained. Level 0 operations never create approval records.
+  level                      Int
+  decision                   ApprovalDecision
+  documentRevisionId         String?          @map("document_revision_id") @db.Uuid
+  baselineId                 String?          @map("baseline_id") @db.Uuid
+  /// Hash of the approved content at decision time; must equal the target's stored hash.
+  contentSha256              String           @map("content_sha256") @db.Char(64)
+  /// Customer organization the subject belongs to (tenant).
+  organizationId             String           @map("organization_id") @db.Uuid
+  projectId                  String?          @map("project_id") @db.Uuid
+  approverUserId             String           @map("approver_user_id") @db.Uuid
+  /// Role assignment / membership that conferred authority, captured for audit.
+  authorityBasis             Json             @map("authority_basis")
+  mfaVerified                Boolean          @map("mfa_verified")
+  evidenceDocumentRevisionId String?          @map("evidence_document_revision_id") @db.Uuid
+  conditions                 String?
+  comment                    String?
+  revokesApprovalId          String?          @unique @map("revokes_approval_id") @db.Uuid
+  idempotencyKey             String           @unique @map("idempotency_key") @db.VarChar(200)
+  requestId                  String?          @map("request_id") @db.VarChar(100)
+  ipAddress                  String?          @map("ip_address") @db.VarChar(64)
+  userAgent                  String?          @map("user_agent") @db.VarChar(500)
+  decidedAt                  DateTime         @default(now()) @map("decided_at") @db.Timestamptz(3)
+
+  documentRevision    DocumentRevision? @relation("ApprovalTarget", fields: [documentRevisionId], references: [id], onDelete: Restrict)
+  baseline            Baseline?         @relation(fields: [baselineId], references: [id], onDelete: Restrict)
+  evidenceRevision    DocumentRevision? @relation("ApprovalEvidence", fields: [evidenceDocumentRevisionId], references: [id], onDelete: Restrict)
+  approver            User              @relation("Approver", fields: [approverUserId], references: [id], onDelete: Restrict)
+  revokes             Approval?         @relation("ApprovalRevocation", fields: [revokesApprovalId], references: [id], onDelete: Restrict)
+  revokedBy           Approval?         @relation("ApprovalRevocation")
+  waivedRequirements  GateRequirement[]
+  acceptedDeliverable Deliverable?      @relation("DeliverableAcceptance")
+  agentActions        AgentAction[]
+
+  @@index([documentRevisionId])
+  @@index([baselineId])
+  @@index([organizationId, decidedAt])
+  @@index([approverUserId])
+  @@map("approvals")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Documents (metadata in Postgres, content in S3-compatible object storage)
+// ---------------------------------------------------------------------------------------------
+
+model Document {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  projectId      String?            @map("project_id") @db.Uuid
+  engagementId   String?            @map("engagement_id") @db.Uuid
+  title          String             @db.VarChar(300)
+  documentType   DocumentType       @map("document_type")
+  classification DataClassification @default(confidential)
+  createdById    String?            @map("created_by_id") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  project       Project?           @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  engagement    Engagement?        @relation(fields: [engagementId], references: [id], onDelete: Restrict)
+  revisions     DocumentRevision[]
+  proposal      Proposal?          @relation("ProposalDocument")
+  contract      Contract?          @relation("ContractDocument")
+  changeRequest ChangeRequest?     @relation("ChangeRequestDocument")
+  gate          Gate?              @relation("GatePackageDocument")
+  deliverable   Deliverable?       @relation("DeliverableDocument")
+  invoice       Invoice?           @relation("InvoiceDocument")
+
+  @@index([organizationId, documentType])
+  @@index([projectId])
+  @@map("documents")
+}
+
+/// Immutable document revision. The current revision is the highest revision_number for a document.
+model DocumentRevision {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId     String    @map("document_id") @db.Uuid
+  revisionNumber Int       @map("revision_number")
+  revisionLabel  String?   @map("revision_label") @db.VarChar(20)
+  storageKey     String    @map("storage_key") @db.VarChar(500)
+  contentSha256  String    @map("content_sha256") @db.Char(64)
+  sizeBytes      BigInt    @map("size_bytes")
+  mimeType       String    @map("mime_type") @db.VarChar(150)
+  changeSummary  String?   @map("change_summary")
+  createdByType  ActorType @default(user) @map("created_by_type")
+  createdById    String?   @map("created_by_id") @db.Uuid
+  agentRunId     String?   @map("agent_run_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  document          Document          @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  approvals         Approval[]        @relation("ApprovalTarget")
+  evidenceFor       Approval[]        @relation("ApprovalEvidence")
+  gateRequirements  GateRequirement[]
+  paymentsEvidenced Payment[]
+
+  @@unique([documentId, revisionNumber])
+  @@index([contentSha256])
+  @@map("document_revisions")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Time, invoicing, payments
+// ---------------------------------------------------------------------------------------------
+
+model TimeEntry {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String          @map("user_id") @db.Uuid
+  engagementId  String          @map("engagement_id") @db.Uuid
+  projectId     String?         @map("project_id") @db.Uuid
+  taskId        String?         @map("task_id") @db.Uuid
+  workDate      DateTime        @map("work_date") @db.Date
+  /// 1-1440, CHECK constrained.
+  minutes       Int
+  description   String
+  isBillable    Boolean         @default(true) @map("is_billable")
+  status        TimeEntryStatus @default(draft)
+  approvedById  String?         @map("approved_by_id") @db.Uuid
+  approvedAt    DateTime?       @map("approved_at") @db.Timestamptz(3)
+  invoiceLineId String?         @map("invoice_line_id") @db.Uuid
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version       Int             @default(1)
+
+  user        User         @relation("TimeEntryUser", fields: [userId], references: [id], onDelete: Restrict)
+  engagement  Engagement   @relation(fields: [engagementId], references: [id], onDelete: Restrict)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  task        Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  invoiceLine InvoiceLine? @relation(fields: [invoiceLineId], references: [id], onDelete: Restrict)
+
+  @@index([userId, workDate])
+  @@index([engagementId, workDate])
+  @@index([invoiceLineId])
+  @@map("time_entries")
+}
+
+model Invoice {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  engagementId   String        @map("engagement_id") @db.Uuid
+  number         String        @unique @db.VarChar(40)
+  status         InvoiceStatus @default(draft)
+  issueDate      DateTime?     @map("issue_date") @db.Date
+  dueDate        DateTime?     @map("due_date") @db.Date
+  periodStart    DateTime?     @map("period_start") @db.Date
+  periodEnd      DateTime?     @map("period_end") @db.Date
+  currency       String        @default("USD") @db.Char(3)
+  subtotalCents  BigInt        @default(0) @map("subtotal_cents")
+  taxCents       BigInt        @default(0) @map("tax_cents")
+  totalCents     BigInt        @default(0) @map("total_cents")
+  documentId     String?       @unique @map("document_id") @db.Uuid
+  /// Identifier in the external accounting system, if synchronized.
+  externalRef    String?       @map("external_ref") @db.VarChar(120)
+  createdById    String?       @map("created_by_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version        Int           @default(1)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  engagement   Engagement    @relation(fields: [engagementId], references: [id], onDelete: Restrict)
+  document     Document?     @relation("InvoiceDocument", fields: [documentId], references: [id], onDelete: Restrict)
+  lines        InvoiceLine[]
+  payments     Payment[]
+
+  @@index([organizationId, status])
+  @@index([engagementId])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId      String          @map("invoice_id") @db.Uuid
+  lineType       InvoiceLineType @map("line_type")
+  description    String          @db.VarChar(500)
+  quantity       Decimal         @db.Decimal(12, 4)
+  unitPriceCents BigInt          @map("unit_price_cents")
+  amountCents    BigInt          @map("amount_cents")
+  milestoneId    String?         @map("milestone_id") @db.Uuid
+  sortOrder      Int             @default(0) @map("sort_order")
+
+  invoice     Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  milestone   Milestone?  @relation(fields: [milestoneId], references: [id], onDelete: Restrict)
+  timeEntries TimeEntry[]
+
+  @@index([invoiceId])
+  @@map("invoice_lines")
+}
+
+/// A payment received. status = verified requires evidence and a human verifier (CHECK).
+model Payment {
+  id                         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId                  String        @map("invoice_id") @db.Uuid
+  organizationId             String        @map("organization_id") @db.Uuid
+  amountCents                BigInt        @map("amount_cents")
+  currency                   String        @db.Char(3)
+  receivedOn                 DateTime      @map("received_on") @db.Date
+  method                     PaymentMethod
+  reference                  String?       @db.VarChar(120)
+  status                     PaymentStatus @default(recorded)
+  evidenceDocumentRevisionId String?       @map("evidence_document_revision_id") @db.Uuid
+  verifiedById               String?       @map("verified_by_id") @db.Uuid
+  verifiedAt                 DateTime?     @map("verified_at") @db.Timestamptz(3)
+  recordedByType             ActorType     @default(user) @map("recorded_by_type")
+  recordedById               String?       @map("recorded_by_id") @db.Uuid
+  idempotencyKey             String        @unique @map("idempotency_key") @db.VarChar(200)
+  createdAt                  DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                  DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  invoice          Invoice           @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  evidenceRevision DocumentRevision? @relation(fields: [evidenceDocumentRevisionId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+  @@index([organizationId, receivedOn])
+  @@map("payments")
+}
+
+// ---------------------------------------------------------------------------------------------
+// AI agent operations
+// ---------------------------------------------------------------------------------------------
+
+model AgentRun {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentKey       String         @map("agent_key") @db.VarChar(60)
+  agentVersion   String         @map("agent_version") @db.VarChar(40)
+  promptVersion  String?        @map("prompt_version") @db.VarChar(40)
+  status         AgentRunStatus @default(queued)
+  triggerType    String         @map("trigger_type") @db.VarChar(40)
+  triggeredById  String?        @map("triggered_by_id") @db.Uuid
+  workflowId     String?        @map("workflow_id") @db.VarChar(200)
+  parentRunId    String?        @map("parent_run_id") @db.Uuid
+  /// Data-access boundary: the run may only touch data in this organization/project.
+  organizationId String?        @map("organization_id") @db.Uuid
+  projectId      String?        @map("project_id") @db.Uuid
+  input          Json
+  output         Json?
+  error          Json?
+  attempt        Int            @default(1)
+  modelProvider  String?        @map("model_provider") @db.VarChar(60)
+  modelName      String?        @map("model_name") @db.VarChar(120)
+  inputTokens    Int            @default(0) @map("input_tokens")
+  outputTokens   Int            @default(0) @map("output_tokens")
+  /// Cost in millionths of a USD.
+  costMicrosUsd  BigInt         @default(0) @map("cost_micros_usd")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  startedAt      DateTime?      @map("started_at") @db.Timestamptz(3)
+  completedAt    DateTime?      @map("completed_at") @db.Timestamptz(3)
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  parentRun    AgentRun?     @relation("AgentRunHierarchy", fields: [parentRunId], references: [id], onDelete: Restrict)
+  childRuns    AgentRun[]    @relation("AgentRunHierarchy")
+  actions      AgentAction[]
+  activities   Activity[]
+
+  @@index([agentKey, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([status])
+  @@map("agent_runs")
+}
+
+/// Each tool call or proposed change made by an agent run. Proposed changes are applied only by
+/// deterministic services after the linked approval (if any) validates.
+model AgentAction {
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentRunId            String            @map("agent_run_id") @db.Uuid
+  sequence              Int
+  action                String            @db.VarChar(120)
+  toolName              String?           @map("tool_name") @db.VarChar(120)
+  targetType            String?           @map("target_type") @db.VarChar(60)
+  targetId              String?           @map("target_id") @db.Uuid
+  arguments             Json?
+  proposedChange        Json?             @map("proposed_change")
+  result                Json?
+  requiredApprovalLevel Int               @default(0) @map("required_approval_level")
+  status                AgentActionStatus
+  approvalId            String?           @map("approval_id") @db.Uuid
+  reviewedById          String?           @map("reviewed_by_id") @db.Uuid
+  reviewedAt            DateTime?         @map("reviewed_at") @db.Timestamptz(3)
+  appliedAt             DateTime?         @map("applied_at") @db.Timestamptz(3)
+  error                 Json?
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  agentRun AgentRun  @relation(fields: [agentRunId], references: [id], onDelete: Restrict)
+  approval Approval? @relation(fields: [approvalId], references: [id], onDelete: Restrict)
+
+  @@unique([agentRunId, sequence])
+  @@index([status])
+  @@index([targetType, targetId])
+  @@map("agent_actions")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Audit, notifications, integrations, idempotency
+// ---------------------------------------------------------------------------------------------
+
+/// Append-only, hash-chained audit log. No foreign keys so history survives any data change.
+/// UPDATE/DELETE/TRUNCATE are blocked by triggers.
+model AuditEvent {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sequence        BigInt    @unique @default(autoincrement())
+  occurredAt      DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  actorType       ActorType @map("actor_type")
+  actorUserId     String?   @map("actor_user_id") @db.Uuid
+  actorAgentRunId String?   @map("actor_agent_run_id") @db.Uuid
+  /// Tenant the event belongs to (null for platform-level events).
+  organizationId  String?   @map("organization_id") @db.Uuid
+  projectId       String?   @map("project_id") @db.Uuid
+  action          String    @db.VarChar(120)
+  entityType      String    @map("entity_type") @db.VarChar(60)
+  entityId        String?   @map("entity_id") @db.Uuid
+  before          Json?
+  after           Json?
+  metadata        Json?
+  requestId       String?   @map("request_id") @db.VarChar(100)
+  ipAddress       String?   @map("ip_address") @db.VarChar(64)
+  userAgent       String?   @map("user_agent") @db.VarChar(500)
+  prevHash        String?   @map("prev_hash") @db.Char(64)
+  hash            String    @db.Char(64)
+
+  @@index([entityType, entityId])
+  @@index([organizationId, occurredAt])
+  @@index([actorUserId, occurredAt])
+  @@map("audit_events")
+}
+
+model Notification {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String              @map("user_id") @db.Uuid
+  channel     NotificationChannel @default(in_app)
+  kind        String              @db.VarChar(60)
+  title       String              @db.VarChar(300)
+  body        String?
+  linkPath    String?             @map("link_path") @db.VarChar(500)
+  entityType  String?             @map("entity_type") @db.VarChar(60)
+  entityId    String?             @map("entity_id") @db.Uuid
+  readAt      DateTime?           @map("read_at") @db.Timestamptz(3)
+  deliveredAt DateTime?           @map("delivered_at") @db.Timestamptz(3)
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+/// External system connection. Secrets are NEVER stored here; secret_ref points to the secrets
+/// manager entry holding credentials.
+model Integration {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?           @map("organization_id") @db.Uuid
+  provider       String            @db.VarChar(60)
+  name           String            @db.VarChar(120)
+  status         IntegrationStatus @default(disabled)
+  config         Json              @default("{}")
+  secretRef      String?           @map("secret_ref") @db.VarChar(300)
+  lastSyncAt     DateTime?         @map("last_sync_at") @db.Timestamptz(3)
+  lastError      String?           @map("last_error")
+  createdById    String?           @map("created_by_id") @db.Uuid
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version        Int               @default(1)
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, provider, name])
+  @@map("integrations")
+}
+
+/// Stores the outcome of idempotent mutations so retries return the original result.
+model IdempotencyKey {
+  userId         String   @map("user_id") @db.Uuid
+  key            String   @db.VarChar(200)
+  operation      String   @db.VarChar(120)
+  requestHash    String   @map("request_hash") @db.Char(64)
+  responseStatus Int      @map("response_status")
+  responseBody   Json     @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@id([userId, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}

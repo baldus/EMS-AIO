@@ -1,0 +1,221 @@
+{
+  "realm": "ems",
+  "displayName": "EMS Platform (local development)",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "failureFactor": 10,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 43200,
+  "passwordPolicy": "length(12) and notUsername",
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "clients": [
+    {
+      "clientId": "ems-web",
+      "name": "EMS Web (local)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "ems-web-local-dev-only-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "http://localhost:3000/auth/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/login*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "basic",
+        "profile",
+        "email",
+        "roles"
+      ],
+      "protocolMappers": [
+        {
+          "name": "ems-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "ems-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "authentication methods (amr)",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-amr-mapper",
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin@ems.example.com",
+      "email": "admin@ems.example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Avery",
+      "lastName": "Admin (fictional)",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "LocalDev-Only-Pass-1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "Local dev authenticator (fictional user)",
+          "secretData": "{\"value\": \"ems-local-dev-only-totp-secret\"}",
+          "credentialData": "{\"subType\": \"totp\", \"digits\": 6, \"counter\": 0, \"period\": 30, \"algorithm\": \"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "manager@ems.example.com",
+      "email": "manager@ems.example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Morgan",
+      "lastName": "Manager (fictional)",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "LocalDev-Only-Pass-1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "Local dev authenticator (fictional user)",
+          "secretData": "{\"value\": \"ems-local-dev-only-totp-secret\"}",
+          "credentialData": "{\"subType\": \"totp\", \"digits\": 6, \"counter\": 0, \"period\": 30, \"algorithm\": \"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "pm@ems.example.com",
+      "email": "pm@ems.example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Parker",
+      "lastName": "PM (fictional)",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "LocalDev-Only-Pass-1",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "finance@ems.example.com",
+      "email": "finance@ems.example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Frankie",
+      "lastName": "Finance (fictional)",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "LocalDev-Only-Pass-1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "Local dev authenticator (fictional user)",
+          "secretData": "{\"value\": \"ems-local-dev-only-totp-secret\"}",
+          "credentialData": "{\"subType\": \"totp\", \"digits\": 6, \"counter\": 0, \"period\": 30, \"algorithm\": \"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "lead@harborpoint.example.com",
+      "email": "lead@harborpoint.example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Harper",
+      "lastName": "Lead (fictional)",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "LocalDev-Only-Pass-1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "Local dev authenticator (fictional user)",
+          "secretData": "{\"value\": \"ems-local-dev-only-totp-secret\"}",
+          "credentialData": "{\"subType\": \"totp\", \"digits\": 6, \"counter\": 0, \"period\": 30, \"algorithm\": \"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "engineer@harborpoint.example.com",
+      "email": "engineer@harborpoint.example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Emery",
+      "lastName": "Engineer (fictional)",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "LocalDev-Only-Pass-1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "Local dev authenticator (fictional user)",
+          "secretData": "{\"value\": \"ems-local-dev-only-totp-secret\"}",
+          "credentialData": "{\"subType\": \"totp\", \"digits\": 6, \"counter\": 0, \"period\": 30, \"algorithm\": \"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "buyer@copperline.example.com",
+      "email": "buyer@copperline.example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Casey",
+      "lastName": "Buyer (fictional)",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "LocalDev-Only-Pass-1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "Local dev authenticator (fictional user)",
+          "secretData": "{\"value\": \"ems-local-dev-only-totp-secret\"}",
+          "credentialData": "{\"subType\": \"totp\", \"digits\": 6, \"counter\": 0, \"period\": 30, \"algorithm\": \"HmacSHA1\"}"
+        }
+      ]
+    }
+  ]
+}

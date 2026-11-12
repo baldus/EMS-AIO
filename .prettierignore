@@ -1,0 +1,10 @@
+pnpm-lock.yaml
+**/dist
+**/.next
+**/generated
+**/migrations/**/*.sql
+app/
+tests/
+*.md
+infra/keycloak/*.json
+packages/api-client/openapi.json

@@ -1,4 +1,49 @@
-# EMS Home
+# EMS Platform
+
+AI-native operating system for **Engineered & Manufacturing Solutions, LTD** — managing
+prospecting → sales → proposal → contract → project execution → stage gates → billing → closeout
+for manufacturers, machine builders, robotics integrators, automation companies, and OEMs.
+
+**Status:** Release 0 (foundation). Start with [docs/architecture/overview.md](docs/architecture/overview.md).
+
+| Doc | |
+|---|---|
+| [Architecture overview](docs/architecture/overview.md) | System, modules, request lifecycle |
+| [Decisions & open questions](docs/architecture/decisions.md) | ADRs, assumptions |
+| [Data model](docs/architecture/data-model.md) | Tables, invariants |
+| [Security model](docs/architecture/security-model.md) | AuthN/Z, MFA, tenancy, limitations |
+| [Agent framework](docs/architecture/agent-framework.md) | Agent contract and guardrails |
+| [Project lifecycle](docs/business-processes/project-lifecycle.md) · [Approval matrix](docs/business-processes/approval-matrix.md) | Business processes |
+| [Roadmap](docs/implementation/roadmap.md) | Releases and backlog |
+| [Local infrastructure](infra/README.md) | Services, dev users, TOTP |
+
+## Quick start
+
+Requirements: Node 22.12+, pnpm 10 (`corepack enable`), Docker.
+
+```bash
+pnpm install
+pnpm setup:env                 # creates apps/api/.env, apps/web/.env.local, packages/db/.env
+pnpm infra:up                  # Postgres, Redis, MinIO, Keycloak, Mailpit
+pnpm db:migrate && pnpm db:seed
+pnpm dev                       # web http://localhost:3000 · API http://localhost:4000 (docs: /docs)
+```
+
+Sign in as `manager@ems.example.com` / `LocalDev-Only-Pass-1` (TOTP key in [infra/README.md](infra/README.md)).
+
+```bash
+pnpm verify                    # format, lint, typecheck, all tests
+pnpm build && pnpm --filter @ems/web e2e   # full-stack browser test
+```
+
+---
+
+# Legacy: EMS Home (Flask)
+
+The section below documents the pre-existing Flask application in `app/`, which remains in place
+unchanged alongside the new platform (see [decisions](docs/architecture/decisions.md#open-questions), Q1).
+
+## EMS Home
 Local-First Operations Workspace
 
 EMS Home is a local-first, Notion-lite workspace for Engineered & Manufacturing Solutions (EMS). It runs entirely on a dedicated PC with no SaaS dependencies or subscriptions.

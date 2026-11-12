@@ -1,0 +1,38 @@
+{
+  "name": "ems-platform",
+  "private": true,
+  "description": "EMS AI-native operating system for industrial project management services (modular monolith).",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel --filter=@ems/api --filter=@ems/web",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test --concurrency=1",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "setup:env": "node scripts/setup-env.mjs",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:up:workflows": "docker compose -f infra/docker-compose.yml --profile workflows up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "db:generate": "pnpm --filter @ems/db run generate",
+    "db:migrate": "pnpm --filter @ems/db run migrate:deploy",
+    "db:migrate:dev": "pnpm --filter @ems/db run migrate:dev",
+    "db:seed": "pnpm --filter @ems/db run seed",
+    "db:reset": "pnpm --filter @ems/db run reset",
+    "openapi:generate": "pnpm --filter @ems/api run openapi:generate && pnpm --filter @ems/api-client run generate"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "globals": "17.14.0",
+    "prettier": "3.10.1",
+    "turbo": "2.11.11",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.2"
+  }
+}
